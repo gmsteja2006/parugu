@@ -9,10 +9,13 @@ let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
 
 export function getSocket(): Socket<ServerToClientEvents, ClientToServerEvents> {
   if (!socket) {
-    socket = io({
+    const url = process.env.NEXT_PUBLIC_SOCKET_URL || '';
+    socket = io(url, {
       path: '/api/socketio',
       addTrailingSlash: false,
       transports: ['websocket', 'polling'],
+      reconnectionAttempts: 3,
+      timeout: 4000,
     });
   }
   return socket;

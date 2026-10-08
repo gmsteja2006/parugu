@@ -9,11 +9,12 @@ import React, { useState } from 'react';
 interface StartScreenProps {
   onCreateRoom: (playerName: string) => void;
   onJoinRoom: (roomCode: string, playerName: string) => void;
+  onPlaySolo: (playerName: string) => void;
   isConnecting: boolean;
   error: string | null;
 }
 
-export default function StartScreen({ onCreateRoom, onJoinRoom, isConnecting, error }: StartScreenProps) {
+export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isConnecting, error }: StartScreenProps) {
   const [playerName, setPlayerName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
@@ -106,9 +107,30 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, isConnecting, er
 
               <div className="pt-4 space-y-3">
                 <button
+                  onClick={() => onPlaySolo(playerName.trim() || 'Runner')}
+                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-teal-600 transition-opacity group-hover:opacity-90" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
+                  <span className="relative flex items-center justify-center gap-3 text-base">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Play Solo (Instant Run)
+                  </span>
+                </button>
+
+                <div className="flex items-center gap-3 my-2">
+                  <div className="h-px bg-white/10 flex-1" />
+                  <span className="text-[11px] uppercase tracking-wider text-white/30 font-medium">Or Multiplayer</span>
+                  <div className="h-px bg-white/10 flex-1" />
+                </div>
+
+                <button
                   onClick={() => playerName.trim() ? setMode('create') : null}
                   disabled={!playerName.trim()}
-                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-full group relative overflow-hidden rounded-xl px-6 py-3.5 font-semibold text-white transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600 transition-opacity group-hover:opacity-90" />
                   <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
@@ -123,7 +145,7 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, isConnecting, er
                 <button
                   onClick={() => playerName.trim() ? setMode('join') : null}
                   disabled={!playerName.trim()}
-                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="w-full group relative overflow-hidden rounded-xl px-6 py-3.5 font-semibold text-white transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-600 transition-opacity group-hover:opacity-90" />
                   <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />

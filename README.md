@@ -96,19 +96,16 @@ running_game/
 
 ## 🌐 Deployment
 
-### Vercel (Recommended)
+### Vercel Deployment
 
-> **Note:** Vercel's serverless functions have limitations with persistent WebSocket connections. For production multiplayer, consider deploying the Socket.IO server separately on Railway, Render, or Fly.io.
+Deploy directly from GitHub with zero configuration:
 
-```bash
-# Build for production
-npm run build
+1. Import the repository in [Vercel](https://vercel.com/new).
+2. Framework Preset will automatically detect **Next.js**.
+3. Deploy! Next.js pages and `/api/rooms` Serverless API routes will deploy instantly.
+4. *(Optional for low-latency WebSocket multiplayer)*: Deploy `server.js` to a free platform (Render, Railway, or Fly.io) and add `NEXT_PUBLIC_SOCKET_URL=https://your-socket-server.onrender.com` in Vercel Environment Variables.
 
-# The vercel.json is pre-configured
-vercel deploy
-```
-
-### Self-Hosted
+### Self-Hosted / Local Production
 
 ```bash
 npm run build
