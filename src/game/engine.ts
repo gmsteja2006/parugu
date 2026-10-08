@@ -343,9 +343,9 @@ export class GameEngine {
           }
 
           // If jumping over low obstacles
-          if (player.state === 'jumping' && playerTop > obstacleTop + obstacle.height * 0.6) {
-            // Player is high enough to avoid collision with shorter obstacles
-            if (obstacle.type === 'barrier' || obstacle.type === 'cone') {
+          if (player.state === 'jumping' && (obstacle.type === 'barrier' || obstacle.type === 'cone')) {
+            const playerBottom = playerTop + playerHeight;
+            if (playerBottom < obstacleTop + 15) {
               obstacle.passed = true;
               continue;
             }

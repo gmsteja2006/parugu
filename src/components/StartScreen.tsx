@@ -1,0 +1,248 @@
+'use client';
+
+// ============================================
+// Start Screen Component
+// ============================================
+
+import React, { useState } from 'react';
+
+interface StartScreenProps {
+  onCreateRoom: (playerName: string) => void;
+  onJoinRoom: (roomCode: string, playerName: string) => void;
+  isConnecting: boolean;
+  error: string | null;
+}
+
+export default function StartScreen({ onCreateRoom, onJoinRoom, isConnecting, error }: StartScreenProps) {
+  const [playerName, setPlayerName] = useState('');
+  const [roomCode, setRoomCode] = useState('');
+  const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
+
+  const handleCreate = () => {
+    if (!playerName.trim()) return;
+    onCreateRoom(playerName.trim());
+  };
+
+  const handleJoin = () => {
+    if (!playerName.trim() || !roomCode.trim()) return;
+    onJoinRoom(roomCode.trim().toUpperCase(), playerName.trim());
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen p-6 relative overflow-hidden">
+      {/* Animated background particles */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {Array.from({ length: 20 }).map((_, i) => {
+          const w = 4 + ((i * 7) % 8);
+          const left = (i * 47 + 13) % 100;
+          const top = (i * 59 + 27) % 100;
+          const delay = ((i * 1.3) % 5).toFixed(1);
+          const duration = (3 + ((i * 2.1) % 4)).toFixed(1);
+          return (
+            <div
+              key={i}
+              className="absolute rounded-full opacity-20 animate-float"
+              style={{
+                width: `${w}px`,
+                height: `${w}px`,
+                left: `${left}%`,
+                top: `${top}%`,
+                background: ['#00e5ff', '#ff4081', '#76ff03', '#ffea00'][i % 4],
+                animationDelay: `${delay}s`,
+                animationDuration: `${duration}s`,
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* Title */}
+      <div className="relative z-10 mb-12 text-center">
+        <h1 className="text-6xl md:text-7xl font-black tracking-tight mb-2">
+          <span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            NEON
+          </span>
+          <br />
+          <span className="bg-gradient-to-r from-pink-400 via-yellow-400 to-cyan-400 bg-clip-text text-transparent">
+            RUNNER
+          </span>
+        </h1>
+        <p className="text-white/40 text-sm tracking-[0.3em] uppercase font-medium">
+          Multiplayer Endless Runner
+        </p>
+        <div className="mt-4 flex items-center justify-center gap-2 text-xs text-white/30">
+          <span className="inline-block w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+          Online
+        </div>
+      </div>
+
+      {/* Content Card */}
+      <div className="relative z-10 w-full max-w-md">
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl shadow-purple-900/20">
+          
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center animate-shake">
+              {error}
+            </div>
+          )}
+
+          {mode === 'menu' && (
+            <div className="space-y-4">
+              {/* Player Name Input */}
+              <div>
+                <label className="block text-white/50 text-xs uppercase tracking-wider mb-2 font-medium">
+                  Your Name
+                </label>
+                <input
+                  type="text"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  placeholder="Enter your name..."
+                  maxLength={16}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 focus:outline-none focus:border-cyan-400/50 focus:ring-1 focus:ring-cyan-400/20 transition-all duration-300"
+                />
+              </div>
+
+              <div className="pt-4 space-y-3">
+                <button
+                  onClick={() => playerName.trim() ? setMode('create') : null}
+                  disabled={!playerName.trim()}
+                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600 transition-opacity group-hover:opacity-90" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
+                  <span className="relative flex items-center justify-center gap-3">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Create Room
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => playerName.trim() ? setMode('join') : null}
+                  disabled={!playerName.trim()}
+                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-600 transition-opacity group-hover:opacity-90" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
+                  <span className="relative flex items-center justify-center gap-3">
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                    </svg>
+                    Join Room
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mode === 'create' && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-white mb-1">Create a Room</h2>
+                <p className="text-white/40 text-sm">Start a new game session</p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-cyan-400/5 border border-cyan-400/20">
+                <p className="text-white/60 text-sm text-center">
+                  Playing as <span className="text-cyan-400 font-semibold">{playerName}</span>
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleCreate}
+                  disabled={isConnecting}
+                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 disabled:opacity-50"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600" />
+                  <span className="relative flex items-center justify-center gap-2">
+                    {isConnecting ? (
+                      <>
+                        <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Creating...
+                      </>
+                    ) : (
+                      'Create Room'
+                    )}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setMode('menu')}
+                  className="w-full px-6 py-3 text-white/40 hover:text-white/70 transition-colors text-sm"
+                >
+                  ← Back
+                </button>
+              </div>
+            </div>
+          )}
+
+          {mode === 'join' && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-white mb-1">Join a Room</h2>
+                <p className="text-white/40 text-sm">Enter the room code to join</p>
+              </div>
+
+              <div>
+                <label className="block text-white/50 text-xs uppercase tracking-wider mb-2 font-medium">
+                  Room Code
+                </label>
+                <input
+                  type="text"
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. ABC12"
+                  maxLength={5}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-[0.5em] uppercase placeholder-white/20 focus:outline-none focus:border-purple-400/50 focus:ring-1 focus:ring-purple-400/20 transition-all duration-300 font-mono"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  onClick={handleJoin}
+                  disabled={isConnecting || !roomCode.trim()}
+                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 disabled:opacity-50"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-600" />
+                  <span className="relative flex items-center justify-center gap-2">
+                    {isConnecting ? (
+                      <>
+                        <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Joining...
+                      </>
+                    ) : (
+                      'Join Room'
+                    )}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setMode('menu')}
+                  className="w-full px-6 py-3 text-white/40 hover:text-white/70 transition-colors text-sm"
+                >
+                  ← Back
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Controls hint */}
+        <div className="mt-8 text-center text-white/20 text-xs space-y-1">
+          <p>🎮 Arrow Keys / WASD to move</p>
+          <p>📱 Swipe on mobile</p>
+        </div>
+      </div>
+    </div>
+  );
+}
