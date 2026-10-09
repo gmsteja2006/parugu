@@ -31,6 +31,7 @@ export default function GameView() {
   const [currentScore, setCurrentScore] = useState(0);
   const [currentDistance, setCurrentDistance] = useState(0);
   const [currentCoins, setCurrentCoins] = useState(0);
+  const [currentSpeed, setCurrentSpeed] = useState(5);
   const [gameStarted, setGameStarted] = useState(false);
   const [isServerlessMode, setIsServerlessMode] = useState(false);
 
@@ -114,6 +115,7 @@ export default function GameView() {
       setCurrentScore(0);
       setCurrentDistance(0);
       setCurrentCoins(0);
+      setCurrentSpeed(5);
     });
 
     socket.on('game:player-update', (player: RoomPlayer) => {
@@ -236,6 +238,7 @@ export default function GameView() {
         setCurrentScore(0);
         setCurrentDistance(0);
         setCurrentCoins(0);
+        setCurrentSpeed(5);
       }
     }, 1000);
   }, []);
@@ -425,6 +428,7 @@ export default function GameView() {
     setCurrentScore(0);
     setCurrentDistance(0);
     setCurrentCoins(0);
+    setCurrentSpeed(5);
   }, [isServerlessMode, room, playerId]);
 
   // In-Game Update
@@ -481,10 +485,11 @@ export default function GameView() {
   }, [isServerlessMode, room, playerId]);
 
   // Score HUD change
-  const handleScoreChange = useCallback((score: number, distance: number, coins: number) => {
+  const handleScoreChange = useCallback((score: number, distance: number, coins: number, speed: number) => {
     setCurrentScore(score);
     setCurrentDistance(distance);
     setCurrentCoins(coins);
+    setCurrentSpeed(speed);
   }, []);
 
   // Play Again
@@ -500,6 +505,7 @@ export default function GameView() {
     setCurrentScore(0);
     setCurrentDistance(0);
     setCurrentCoins(0);
+    setCurrentSpeed(5);
 
     setRoom(prev => {
       if (!prev) return prev;
@@ -535,26 +541,65 @@ export default function GameView() {
       )}
 
       {(phase === 'countdown' || phase === 'playing') && room && currentPlayer && (
-        <div className="flex flex-col items-center justify-center min-h-screen p-4 relative">
-          <div className="relative">
+        <div className="relative flex flex-col items-center justify-center min-h-screen px-3 py-5 overflow-hidden">
+          {/* Ambient race backdrop */}
+          <div className="pointer-events-none absolute inset-0">
+            <div className="absolute inset-0 bg-[#05050f]" />
+            <div className="absolute -top-32 left-1/2 h-72 w-[720px] -translate-x-1/2 rounded-full bg-fuchsia-600/20 blur-[120px]" />
+            <div className="absolute bottom-0 left-0 h-64 w-96 rounded-full bg-cyan-500/15 blur-[110px]" />
+            <div className="absolute bottom-10 right-0 h-64 w-96 rounded-full bg-amber-500/10 blur-[110px]" />
+            <div className="absolute inset-0 race-grid opacity-[0.35]" />
+          </div>
+
+          {/* Top race bar */}
+          <div className="relative z-10 mb-3 flex w-full max-w-[820px] items-center justify-between rounded-xl border border-white/10 bg-black/50 px-4 py-2 backdrop-blur-md">
+            <div className="flex items-center gap-2.5">
+              <span className="text-sm font-black italic tracking-tight">
+                <span className="bg-gradient-to-r from-cyan-300 to-fuchsia-400 bg-clip-text text-transparent">NEON</span>
+                <span className="text-white/90"> RUNNER</span>
+              </span>
+              <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> live
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] font-mono">
+              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 tracking-[0.25em] text-cyan-200">{room.code}</span>
+              <button onClick={handleLeave} className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-white/50 hover:text-red-300 hover:border-red-400/30 transition text-[11px] font-sans font-semibold">
+                ✕ quit
+              </button>
+            </div>
+          </div>
+
+          <div className="relative z-10">
             <Scoreboard
               currentPlayerId={playerId}
               players={room.players}
               currentScore={currentScore}
               currentDistance={currentDistance}
               currentCoins={currentCoins}
+              currentSpeed={currentSpeed}
             />
-            <GameCanvas
-              playerId={playerId}
-              playerName={currentPlayer.name}
-              playerColor={currentPlayer.color}
-              seed={room.seed}
-              otherPlayers={otherPlayers}
-              onUpdate={handleGameUpdate}
-              onDied={handleGameDied}
-              onScoreChange={handleScoreChange}
-              isStarted={gameStarted}
-            />
+            <div className="pt-[92px]">
+              <GameCanvas
+                playerId={playerId}
+                playerName={currentPlayer.name}
+                playerColor={currentPlayer.color}
+                seed={room.seed}
+                otherPlayers={otherPlayers}
+                onUpdate={handleGameUpdate}
+                onDied={handleGameDied}
+                onScoreChange={handleScoreChange}
+                isStarted={gameStarted}
+              />
+            </div>
+          </div>
+
+          {/* Controls hint */}
+          <div className="relative z-10 mt-3 hidden md:flex items-center gap-2 text-[11px] text-white/40">
+            {['◀ move', '▶ move', '▲ jump', '▼ slide'].map((h) => (
+              <span key={h} className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono">{h}</span>
+            ))}
+            <span className="ml-1 font-sans">dodge trains • grab coins • don&apos;t blink</span>
           </div>
 
           {phase === 'countdown' && (

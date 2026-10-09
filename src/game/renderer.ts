@@ -1,5 +1,7 @@
 // ============================================
 // Game Renderer — Canvas 2D pseudo-3D rendering
+// Neon dusk city chase: synthwave sun, parallax skyline,
+// rushing street lamps, wet asphalt, motion speed feel
 // ============================================
 
 import {
@@ -16,16 +18,14 @@ import {
   PLAYER_WIDTH,
   PLAYER_HEIGHT,
   PLAYER_SLIDE_HEIGHT,
-  OBSTACLE_DEFS,
+  MAX_SPEED,
+  BASE_SPEED,
 } from './types';
 import { getLaneX } from './engine';
 
-const ROAD_COLOR = '#2d2d3d';
-const ROAD_LINE_COLOR = '#4a4a5e';
-const SKY_GRADIENT_TOP = '#0a0a1a';
-const SKY_GRADIENT_BOTTOM = '#1a1a3e';
-const GROUND_COLOR = '#1e1e2e';
-const BUILDING_COLORS = ['#15152a', '#1a1a35', '#121225', '#1d1d3a'];
+const VANISH_Y = 208;
+const VANISH_X = CANVAS_WIDTH / 2;
+const MAX_Z = 800;
 
 interface BuildingDef {
   x: number;
@@ -33,6 +33,21 @@ interface BuildingDef {
   height: number;
   color: string;
   windowColor: string;
+  signColor: string;
+  signY: number;
+}
+
+interface CloudDef {
+  x: number;
+  y: number;
+  w: number;
+  speed: number;
+}
+
+interface SkylineBlock {
+  w: number;
+  h: number;
+  gap: number;
 }
 
 let buildings: BuildingDef[] = [];
@@ -41,41 +56,40 @@ let buildingsGenerated = false;
 function generateBuildings() {
   if (buildingsGenerated) return;
   buildings = [];
-  // Left side buildings
-  for (let i = 0; i < 8; i++) {
+  const palette = ['#141430', '#181838', '#101024', '#1d1040'];
+  const signs = ['#00e5ff', '#ff2d78', '#ffb300', '#7c4dff', '#76ff03'];
+  for (let i = 0; i < 9; i++) {
     buildings.push({
-      x: 20 + i * 55,
-      width: 45 + Math.random() * 20,
-      height: 100 + Math.random() * 200,
-      color: BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)],
-      windowColor: `hsl(${200 + Math.random() * 60}, 60%, ${50 + Math.random() * 30}%)`,
+      x: 8 + i * 52,
+      width: 42 + Math.random() * 22,
+      height: 120 + Math.random() * 210,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      windowColor: `hsl(${190 + Math.random() * 80}, 70%, ${55 + Math.random() * 25}%)`,
+      signColor: signs[Math.floor(Math.random() * signs.length)],
+      signY: 20 + Math.random() * 60,
     });
   }
-  // Right side buildings
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 9; i++) {
     buildings.push({
-      x: CANVAS_WIDTH - 60 - i * 55,
-      width: 45 + Math.random() * 20,
-      height: 100 + Math.random() * 200,
-      color: BUILDING_COLORS[Math.floor(Math.random() * BUILDING_COLORS.length)],
-      windowColor: `hsl(${200 + Math.random() * 60}, 60%, ${50 + Math.random() * 30}%)`,
+      x: CANVAS_WIDTH - 60 - i * 52,
+      width: 42 + Math.random() * 22,
+      height: 120 + Math.random() * 210,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      windowColor: `hsl(${190 + Math.random() * 80}, 70%, ${55 + Math.random() * 25}%)`,
+      signColor: signs[Math.floor(Math.random() * signs.length)],
+      signY: 20 + Math.random() * 60,
     });
   }
   buildingsGenerated = true;
 }
 
-// Perspective projection helpers
+// Perspective projection
 function project3D(laneX: number, z: number): { x: number; y: number; scale: number } {
-  const vanishY = 200; // vanishing point Y
-  const vanishX = CANVAS_WIDTH / 2;
-  const maxZ = 800;
-  const t = Math.max(0, Math.min(1, z / maxZ));
-
-  const x = vanishX + (laneX - vanishX) * (1 - t * 0.85);
-  const y = vanishY + (GROUND_Y - vanishY) * (1 - t * 0.85);
-  const scale = 1 - t * 0.85;
-
-  return { x, y, scale };
+  const t = Math.max(0, Math.min(1, z / MAX_Z));
+  const k = 1 - t * 0.88;
+  const x = VANISH_X + (laneX - VANISH_X) * k;
+  const y = VANISH_Y + (GROUND_Y - VANISH_Y) * k;
+  return { x, y, scale: Math.max(0.02, k) };
 }
 
 export class GameRenderer {
@@ -83,21 +97,54 @@ export class GameRenderer {
   private frameCount: number = 0;
   private particles: Particle[] = [];
   private starField: Star[] = [];
+  private clouds: CloudDef[] = [];
+  private skyline: SkylineBlock[] = [];
+  private smoothX: number = VANISH_X;
+  private ghostX: Map<string, number> = new Map();
+  private lastCoins: number = 0;
+  private wasAlive: boolean = true;
+  private trauma: number = 0;
+  private flash: number = 0;
+  private flashColor: string = '255,255,255';
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
     this.initStarField();
+    this.initClouds();
+    this.initSkyline();
     generateBuildings();
+    this.smoothX = getLaneX(1);
   }
 
   private initStarField() {
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 70; i++) {
       this.starField.push({
         x: Math.random() * CANVAS_WIDTH,
-        y: Math.random() * 200,
-        size: Math.random() * 2 + 0.5,
+        y: Math.random() * 150,
+        size: Math.random() * 1.8 + 0.4,
         twinkle: Math.random() * Math.PI * 2,
-        speed: 0.02 + Math.random() * 0.03,
+        speed: 0.02 + Math.random() * 0.04,
+      });
+    }
+  }
+
+  private initClouds() {
+    for (let i = 0; i < 5; i++) {
+      this.clouds.push({
+        x: Math.random() * CANVAS_WIDTH,
+        y: 40 + Math.random() * 110,
+        w: 90 + Math.random() * 160,
+        speed: 0.15 + Math.random() * 0.3,
+      });
+    }
+  }
+
+  private initSkyline() {
+    for (let i = 0; i < 26; i++) {
+      this.skyline.push({
+        w: 30 + Math.random() * 50,
+        h: 30 + Math.random() * 90,
+        gap: 4 + Math.random() * 14,
       });
     }
   }
@@ -105,537 +152,1169 @@ export class GameRenderer {
   render(state: GameState, otherPlayers: RoomPlayer[] = []) {
     this.frameCount++;
     const ctx = this.ctx;
+    const speedNorm = Math.max(
+      0,
+      Math.min(1, (state.speed - BASE_SPEED) / Math.max(1, MAX_SPEED - BASE_SPEED))
+    );
 
-    // Clear
+    // Detect coin collect / death for feedback fx
+    if (state.player.coins > this.lastCoins) {
+      this.flash = Math.min(0.5, this.flash + 0.12);
+      this.flashColor = '255,215,0';
+      const px = this.smoothX;
+      this.burst(px, GROUND_Y - 70, '#ffd700', 6, 'coin');
+    }
+    this.lastCoins = state.player.coins;
+    if (this.wasAlive && !state.player.isAlive) {
+      this.trauma = 1;
+      this.flash = 0.55;
+      this.flashColor = '255,60,60';
+      this.burst(this.smoothX, GROUND_Y - 40, '#ff5a3c', 26, 'crash');
+      this.burst(this.smoothX, GROUND_Y - 20, '#888888', 12, 'smoke');
+    }
+    this.wasAlive = state.player.isAlive;
+
+    // Smooth-follow main player lane (fast, snappy, slight lag = speed feel)
+    const targetX = getLaneX(state.player.lane);
+    this.smoothX += (targetX - this.smoothX) * 0.22;
+
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // Draw sky
-    this.drawSky();
+    // Camera: micro shake grows with speed + trauma shake on crash
+    this.trauma = Math.max(0, this.trauma - 0.03);
+    const shakeBase = speedNorm * 1.6;
+    const shakeTrauma = this.trauma * this.trauma * 14;
+    const shX = (Math.random() - 0.5) * (shakeBase + shakeTrauma);
+    const shY = (Math.random() - 0.5) * (shakeBase * 0.7 + shakeTrauma);
 
-    // Draw stars
+    ctx.save();
+    ctx.translate(shX, shY);
+
+    // Slight speed zoom (FOV kick)
+    const zoom = 1 + speedNorm * 0.025;
+    ctx.translate(VANISH_X, CANVAS_HEIGHT * 0.55);
+    ctx.scale(zoom, zoom);
+    ctx.translate(-VANISH_X, -CANVAS_HEIGHT * 0.55);
+
+    this.drawSky(state.distance);
     this.drawStars();
+    this.drawSun();
+    this.drawClouds(state.distance, speedNorm);
+    this.drawSkyline(state.distance);
+    this.drawSideBuildings(state.distance, speedNorm);
+    this.drawRoad(state.distance, state.speed, speedNorm);
+    this.drawStreetLamps(state.distance);
 
-    // Draw buildings (background)
-    this.drawBuildings(state.distance);
-
-    // Draw road
-    this.drawRoad(state.distance);
-
-    // Draw coins (sorted by z, far to near)
+    // Coins far -> near
     const sortedCoins = [...state.coins].sort((a, b) => b.z - a.z);
     for (const coin of sortedCoins) {
-      if (!coin.collected) {
-        this.drawCoin(coin);
-      }
+      if (!coin.collected) this.drawCoin(coin);
     }
 
-    // Draw obstacles (sorted by z, far to near)
+    // Obstacles far -> near
     const sortedObstacles = [...state.obstacles].sort((a, b) => b.z - a.z);
-    for (const obstacle of sortedObstacles) {
-      this.drawObstacle(obstacle);
+    for (const ob of sortedObstacles) {
+      this.drawObstacle(ob, state.distance);
     }
 
-    // Draw other players (ghosts)
+    // Ghost players
     for (const other of otherPlayers) {
-      if (other.isAlive) {
-        this.drawGhostPlayer(other);
-      }
+      if (other.isAlive) this.drawGhostPlayer(other);
     }
 
-    // Draw player
+    // Main player
     if (state.player.isAlive) {
-      this.drawPlayer(state.player);
+      this.drawPlayer(state.player, speedNorm);
+    } else {
+      this.drawWreck(speedNorm);
     }
 
-    // Draw particles
     this.updateAndDrawParticles();
+    this.drawGroundStreaks(state.speed, speedNorm);
+    this.drawSpeedLines(state.speed, speedNorm);
 
-    // Draw speed lines
-    this.drawSpeedLines(state.speed);
+    ctx.restore();
 
-    // Vignette
+    // Screen-space overlays
+    if (this.flash > 0.01) {
+      ctx.fillStyle = `rgba(${this.flashColor},${(this.flash * 0.35).toFixed(3)})`;
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      this.flash *= 0.86;
+    }
+    this.drawColorGrade(speedNorm);
     this.drawVignette();
   }
 
-  private drawSky() {
-    const ctx = this.ctx;
-    const gradient = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
-    gradient.addColorStop(0, SKY_GRADIENT_TOP);
-    gradient.addColorStop(1, SKY_GRADIENT_BOTTOM);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, CANVAS_WIDTH, GROUND_Y);
+  // ================= SKY / CITY =================
 
-    // Ground below road
-    ctx.fillStyle = GROUND_COLOR;
-    ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
+  private drawSky(distance: number) {
+    const ctx = this.ctx;
+    const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y + 60);
+    g.addColorStop(0, '#030310');
+    g.addColorStop(0.45, '#150a33');
+    g.addColorStop(0.72, '#3a1157');
+    g.addColorStop(0.86, '#7a1c5e');
+    g.addColorStop(1, '#1a1030');
+    ctx.fillStyle = g;
+    ctx.fillRect(-20, -20, CANVAS_WIDTH + 40, GROUND_Y + 80);
+
+    // Horizon neon glow band
+    const pulse = 0.55 + Math.sin(this.frameCount * 0.02) * 0.08;
+    const hg = ctx.createRadialGradient(
+      VANISH_X, VANISH_Y, 10,
+      VANISH_X, VANISH_Y, 320
+    );
+    hg.addColorStop(0, `rgba(255,45,120,${0.35 * pulse + 0.2})`);
+    hg.addColorStop(0.4, `rgba(124,77,255,${0.18 * pulse})`);
+    hg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = hg;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, GROUND_Y + 20);
+
+    // Lower ground base
+    const gg = ctx.createLinearGradient(0, GROUND_Y, 0, CANVAS_HEIGHT);
+    gg.addColorStop(0, '#171722');
+    gg.addColorStop(1, '#080810');
+    ctx.fillStyle = gg;
+    ctx.fillRect(-20, GROUND_Y, CANVAS_WIDTH + 40, CANVAS_HEIGHT - GROUND_Y + 20);
   }
 
   private drawStars() {
     const ctx = this.ctx;
-    for (const star of this.starField) {
-      star.twinkle += star.speed;
-      const alpha = 0.3 + Math.sin(star.twinkle) * 0.3;
-      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+    for (const s of this.starField) {
+      s.twinkle += s.speed;
+      const a = 0.25 + Math.abs(Math.sin(s.twinkle)) * 0.5;
+      ctx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
+      ctx.fillRect(s.x, s.y, s.size, s.size);
+    }
+  }
+
+  private drawSun() {
+    const ctx = this.ctx;
+    const cx = VANISH_X;
+    const cy = 168;
+    const r = 78;
+    // Outer glow
+    const glow = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r * 2.2);
+    glow.addColorStop(0, 'rgba(255,80,140,0.35)');
+    glow.addColorStop(1, 'rgba(255,80,140,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 2.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sun disc
+    const sg = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+    sg.addColorStop(0, '#ffe95a');
+    sg.addColorStop(0.55, '#ff9a3c');
+    sg.addColorStop(1, '#ff2d78');
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = sg;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    // Synthwave slits
+    ctx.fillStyle = 'rgba(10,5,25,0.9)';
+    let y = cy + 6;
+    let h = 2;
+    while (y < cy + r) {
+      ctx.fillRect(cx - r, y, r * 2, h);
+      y += h + 9;
+      h += 1.6;
+    }
+    ctx.restore();
+  }
+
+  private drawClouds(distance: number, speedNorm: number) {
+    const ctx = this.ctx;
+    for (const c of this.clouds) {
+      c.x -= c.speed + speedNorm * 0.6;
+      if (c.x + c.w < -20) {
+        c.x = CANVAS_WIDTH + 20;
+        c.y = 30 + Math.random() * 120;
+      }
+      ctx.fillStyle = 'rgba(40,20,70,0.55)';
       ctx.beginPath();
-      ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+      ctx.ellipse(c.x, c.y, c.w / 2, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,60,130,0.14)';
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y + 8, c.w / 2.4, 7, 0, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
-  private drawBuildings(distance: number) {
+  private drawSkyline(distance: number) {
     const ctx = this.ctx;
-    const scrollOffset = (distance * 0.3) % 60;
-
-    for (const bld of buildings) {
-      const bx = bld.x;
-      const by = GROUND_Y - bld.height;
-
-      // Building body
-      ctx.fillStyle = bld.color;
-      ctx.fillRect(bx - bld.width / 2, by, bld.width, bld.height);
-
-      // Windows
-      const windowRows = Math.floor(bld.height / 25);
-      const windowCols = Math.floor(bld.width / 15);
-      for (let r = 0; r < windowRows; r++) {
-        for (let c = 0; c < windowCols; c++) {
-          const lit = Math.sin((r + c + distance * 0.001) * 2.5) > 0;
-          ctx.fillStyle = lit ? bld.windowColor : '#0a0a15';
-          const wx = bx - bld.width / 2 + 5 + c * 14;
-          const wy = by + 8 + r * 24;
-          ctx.fillRect(wx, wy, 8, 12);
+    const totalW = this.skyline.reduce((a, b) => a + b.w + b.gap, 0);
+    let offset = (distance * 0.06) % totalW;
+    const baseY = VANISH_Y + 2;
+    ctx.fillStyle = '#0c0a26';
+    // Draw two wraps to cover width
+    for (let wrap = -1; wrap < 2; wrap++) {
+      let x = -offset + wrap * totalW;
+      for (const b of this.skyline) {
+        const top = baseY - b.h * 0.55;
+        ctx.fillRect(x, top, b.w, b.h * 0.55 + 4);
+        // Antenna
+        if (b.h > 70) {
+          ctx.fillRect(x + b.w / 2 - 1, top - 10, 2, 10);
+          const blink = Math.sin(this.frameCount * 0.08 + x) > 0.6;
+          ctx.fillStyle = blink ? '#ff3355' : '#550f1e';
+          ctx.beginPath();
+          ctx.arc(x + b.w / 2, top - 11, 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#0c0a26';
         }
+        // Sparse lit windows
+        ctx.fillStyle = 'rgba(0,229,255,0.20)';
+        for (let wy = top + 6; wy < baseY - 4; wy += 9) {
+          for (let wx = x + 4; wx < x + b.w - 4; wx += 8) {
+            if ((wx * 7 + wy * 13) % 11 < 2) ctx.fillRect(wx, wy, 2, 3);
+          }
+        }
+        ctx.fillStyle = '#0c0a26';
+        x += b.w + b.gap;
       }
     }
   }
 
-  private drawRoad(distance: number) {
+  private drawSideBuildings(distance: number, speedNorm: number) {
     const ctx = this.ctx;
-    const vanishX = CANVAS_WIDTH / 2;
-    const vanishY = 200;
-    const roadLeftBottom = CANVAS_WIDTH / 2 - LANE_WIDTH * 1.8;
-    const roadRightBottom = CANVAS_WIDTH / 2 + LANE_WIDTH * 1.8;
+    const sway = Math.sin(distance * 0.004) * 2;
+    for (const b of buildings) {
+      const bx = b.x + sway * (b.x < VANISH_X ? -1 : 1) * 0.4;
+      const by = GROUND_Y - b.height;
+      // Body with vertical gradient (lit from horizon)
+      const bg = ctx.createLinearGradient(0, by, 0, GROUND_Y);
+      bg.addColorStop(0, '#0a0a20');
+      bg.addColorStop(1, b.color);
+      ctx.fillStyle = bg;
+      ctx.fillRect(bx - b.width / 2, by, b.width, b.height);
+      // Rooftop edge light
+      ctx.fillStyle = b.signColor + '55';
+      ctx.fillRect(bx - b.width / 2, by, b.width, 2);
+      // Windows — staggered, some lit
+      const rows = Math.floor(b.height / 22);
+      const cols = Math.floor(b.width / 14);
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const lit = Math.sin(r * 1.7 + c * 2.3 + distance * 0.002) > -0.1;
+          ctx.fillStyle = lit ? b.windowColor : 'rgba(5,5,15,0.9)';
+          ctx.globalAlpha = lit ? 0.85 : 1;
+          const wx = bx - b.width / 2 + 5 + c * 13;
+          const wy = by + 10 + r * 21;
+          ctx.fillRect(wx, wy, 7, 11);
+        }
+      }
+      ctx.globalAlpha = 1;
+      // Vertical neon sign strip
+      ctx.save();
+      ctx.shadowColor = b.signColor;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = b.signColor;
+      ctx.globalAlpha = 0.75 + Math.sin(this.frameCount * 0.06 + b.x) * 0.2;
+      ctx.fillRect(bx + b.width / 2 - 4, by + b.signY, 3, 46);
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+    // Dark side aprons outside road for contrast
+    const apronGradL = ctx.createLinearGradient(0, 0, 150, 0);
+    apronGradL.addColorStop(0, 'rgba(0,0,0,0.55)');
+    apronGradL.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = apronGradL;
+    ctx.fillRect(0, VANISH_Y, 150, GROUND_Y - VANISH_Y);
+    const apronGradR = ctx.createLinearGradient(CANVAS_WIDTH, 0, CANVAS_WIDTH - 150, 0);
+    apronGradR.addColorStop(0, 'rgba(0,0,0,0.55)');
+    apronGradR.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = apronGradR;
+    ctx.fillRect(CANVAS_WIDTH - 150, VANISH_Y, 150, GROUND_Y - VANISH_Y);
+  }
 
-    // Road shape (trapezoid going to vanishing point)
-    ctx.fillStyle = ROAD_COLOR;
+  // ================= ROAD =================
+
+  private drawRoad(distance: number, speed: number, speedNorm: number) {
+    const ctx = this.ctx;
+    const roadLeftBottom = VANISH_X - LANE_WIDTH * 1.9;
+    const roadRightBottom = VANISH_X + LANE_WIDTH * 1.9;
+    const roadHalfTop = 22;
+
+    // Asphalt body
+    const rg = ctx.createLinearGradient(0, VANISH_Y, 0, GROUND_Y);
+    rg.addColorStop(0, '#1c1c2e');
+    rg.addColorStop(0.5, '#232333');
+    rg.addColorStop(1, '#2b2b3d');
+    ctx.fillStyle = rg;
     ctx.beginPath();
-    ctx.moveTo(vanishX - 20, vanishY);
+    ctx.moveTo(VANISH_X - roadHalfTop, VANISH_Y);
     ctx.lineTo(roadLeftBottom, GROUND_Y);
     ctx.lineTo(roadRightBottom, GROUND_Y);
-    ctx.lineTo(vanishX + 20, vanishY);
+    ctx.lineTo(VANISH_X + roadHalfTop, VANISH_Y);
     ctx.closePath();
     ctx.fill();
 
-    // Road edges glow
-    ctx.strokeStyle = '#6c63ff44';
-    ctx.lineWidth = 2;
+    // Wet center sheen (magenta/cyan reflection)
+    const sheen = ctx.createLinearGradient(VANISH_X - 60, 0, VANISH_X + 60, 0);
+    sheen.addColorStop(0, 'rgba(0,229,255,0)');
+    sheen.addColorStop(0.5, `rgba(255,45,120,${0.05 + speedNorm * 0.05})`);
+    sheen.addColorStop(1, 'rgba(0,229,255,0)');
+    ctx.fillStyle = sheen;
     ctx.beginPath();
-    ctx.moveTo(vanishX - 20, vanishY);
-    ctx.lineTo(roadLeftBottom, GROUND_Y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(vanishX + 20, vanishY);
-    ctx.lineTo(roadRightBottom, GROUND_Y);
-    ctx.stroke();
-
-    // Lane dividers
-    for (let i = 0; i < 2; i++) {
-      const laneXBottom = roadLeftBottom + (roadRightBottom - roadLeftBottom) * ((i + 1) / 3);
-      const laneXTop = vanishX - 20 + (40) * ((i + 1) / 3);
-
-      ctx.strokeStyle = ROAD_LINE_COLOR;
-      ctx.lineWidth = 1;
-      ctx.setLineDash([15, 20]);
-      ctx.lineDashOffset = -(distance * 3) % 35;
-      ctx.beginPath();
-      ctx.moveTo(laneXTop, vanishY);
-      ctx.lineTo(laneXBottom, GROUND_Y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    // Scrolling road marks
-    const markCount = 15;
-    for (let i = 0; i < markCount; i++) {
-      const t = ((i / markCount) + (distance * 0.003) % (1 / markCount)) % 1;
-      const y = vanishY + (GROUND_Y - vanishY) * t;
-      const scale = t;
-      const halfW = (roadRightBottom - roadLeftBottom) / 2 * scale;
-      const cx = vanishX;
-
-      ctx.fillStyle = `rgba(74, 74, 94, ${0.1 + scale * 0.15})`;
-      ctx.fillRect(cx - halfW, y, halfW * 2, 1);
-    }
-  }
-
-  private drawPlayer(player: PlayerData) {
-    const ctx = this.ctx;
-    const laneX = getLaneX(player.lane);
-    const proj = project3D(laneX, 0);
-
-    const isSliding = player.state === 'sliding';
-    const height = isSliding ? PLAYER_SLIDE_HEIGHT : PLAYER_HEIGHT;
-    const width = PLAYER_WIDTH;
-
-    const drawX = proj.x - width / 2;
-    const drawY = isSliding ? GROUND_Y - PLAYER_SLIDE_HEIGHT : player.y;
-
-    // Player glow
-    ctx.shadowColor = player.color;
-    ctx.shadowBlur = 20;
-
-    // Player body
-    const gradient = ctx.createLinearGradient(drawX, drawY, drawX, drawY + height);
-    gradient.addColorStop(0, player.color);
-    gradient.addColorStop(1, this.darkenColor(player.color, 0.5));
-
-    ctx.fillStyle = gradient;
-
-    if (isSliding) {
-      // Sliding: draw as a flat rectangle
-      this.roundRect(drawX - 5, drawY, width + 10, height, 5);
-    } else {
-      // Running/jumping: draw character shape
-      this.drawCharacter(drawX, drawY, width, height, player.color);
-    }
-
-    ctx.shadowBlur = 0;
-
-    // Running animation particles
-    if (player.state === 'running' && this.frameCount % 3 === 0) {
-      this.addParticle(proj.x, GROUND_Y, player.color, 'dust');
-    }
-  }
-
-  private drawCharacter(x: number, y: number, w: number, h: number, color: string) {
-    const ctx = this.ctx;
-    const cx = x + w / 2;
-    const runCycle = Math.sin(this.frameCount * 0.3);
-
-    // Head
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(cx, y + 10, 10, 0, Math.PI * 2);
+    ctx.moveTo(VANISH_X - 10, VANISH_Y);
+    ctx.lineTo(VANISH_X - 70, GROUND_Y);
+    ctx.lineTo(VANISH_X + 70, GROUND_Y);
+    ctx.lineTo(VANISH_X + 10, VANISH_Y);
+    ctx.closePath();
     ctx.fill();
 
-    // Body
-    const bodyGrad = ctx.createLinearGradient(x, y + 15, x, y + h - 15);
-    bodyGrad.addColorStop(0, color);
-    bodyGrad.addColorStop(1, this.darkenColor(color, 0.6));
-    ctx.fillStyle = bodyGrad;
-    this.roundRect(x + 5, y + 18, w - 10, h - 35, 4);
+    // Neon edge rails — glow + core
+    const edges: Array<[number, number, number, number, string]> = [
+      [VANISH_X - roadHalfTop, VANISH_Y, roadLeftBottom, GROUND_Y, '#00e5ff'],
+      [VANISH_X + roadHalfTop, VANISH_Y, roadRightBottom, GROUND_Y, '#ff2d78'],
+    ];
+    for (const [x1, y1, x2, y2, col] of edges) {
+      ctx.save();
+      ctx.strokeStyle = col;
+      ctx.globalAlpha = 0.9;
+      ctx.shadowColor = col;
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
-    // Legs (animated)
-    ctx.fillStyle = this.darkenColor(color, 0.4);
-    ctx.fillRect(cx - 8, y + h - 20, 6, 18 + runCycle * 4);
-    ctx.fillRect(cx + 2, y + h - 20, 6, 18 - runCycle * 4);
+    // Lane dividers — fast moving neon dashes
+    for (let i = 0; i < 2; i++) {
+      const t = (i + 1) / 3;
+      const xTop = VANISH_X - roadHalfTop + roadHalfTop * 2 * t;
+      const xBot = roadLeftBottom + (roadRightBottom - roadLeftBottom) * t;
+      ctx.save();
+      ctx.strokeStyle = i === 0 ? 'rgba(0,229,255,0.75)' : 'rgba(255,45,120,0.75)';
+      ctx.shadowColor = i === 0 ? '#00e5ff' : '#ff2d78';
+      ctx.shadowBlur = 6;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([18, 22]);
+      ctx.lineDashOffset = -((distance * 3.2) % 40);
+      ctx.beginPath();
+      ctx.moveTo(xTop, VANISH_Y + 4);
+      ctx.lineTo(xBot, GROUND_Y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.setLineDash([]);
 
-    // Arms
-    ctx.fillRect(x, y + 22 + runCycle * 3, 6, 15);
-    ctx.fillRect(x + w - 6, y + 22 - runCycle * 3, 6, 15);
+    // Asphalt speed streaks rushing toward camera
+    const streaks = 16;
+    const flow = (distance * 0.004) % 1;
+    for (let i = 0; i < streaks; i++) {
+      const tt = ((i / streaks) + flow) % 1;
+      const y = VANISH_Y + (GROUND_Y - VANISH_Y) * tt * tt;
+      const halfW = ((roadRightBottom - roadLeftBottom) / 2) * tt;
+      const alpha = 0.04 + tt * (0.10 + speedNorm * 0.12);
+      ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
+      const wob = ((i * 137) % 90) / 90 - 0.5; // pseudo-random lateral
+      const cx = VANISH_X + wob * halfW * 1.2;
+      ctx.fillRect(cx - halfW * 0.5, y, halfW, Math.max(1, 2.5 * tt));
+    }
+  }
 
-    // Visor / eye shine
-    ctx.fillStyle = '#ffffff88';
-    ctx.fillRect(cx - 5, y + 6, 10, 4);
+  private drawStreetLamps(distance: number) {
+    const ctx = this.ctx;
+    const spacing = 240;
+    const count = 9;
+    const baseIndex = Math.floor(distance / spacing);
+    for (let k = 0; k < count; k++) {
+      const worldD = (baseIndex + k) * spacing;
+      const z = worldD - distance + 60;
+      if (z < 0 || z > MAX_Z) continue;
+      for (const side of [-1, 1] as const) {
+        const groundX = VANISH_X + side * (LANE_WIDTH * 2.6);
+        const proj = project3D(groundX, z);
+        const s = proj.scale;
+        if (s < 0.08) continue;
+        const poleH = 130 * s;
+        const poleX = proj.x;
+        const baseY = proj.y;
+        // Pole
+        ctx.strokeStyle = '#2a2a3d';
+        ctx.lineWidth = Math.max(1, 5 * s);
+        ctx.beginPath();
+        ctx.moveTo(poleX, baseY);
+        ctx.lineTo(poleX, baseY - poleH);
+        ctx.stroke();
+        // Arm toward road
+        ctx.strokeStyle = '#2a2a3d';
+        ctx.lineWidth = Math.max(1, 3 * s);
+        ctx.beginPath();
+        ctx.moveTo(poleX, baseY - poleH);
+        ctx.lineTo(poleX - side * 26 * s, baseY - poleH);
+        ctx.stroke();
+        // Lamp head glow
+        const lampX = poleX - side * 26 * s;
+        const lampY = baseY - poleH;
+        const col = side < 0 ? '#00e5ff' : '#ff9a3c';
+        ctx.save();
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 18 * s;
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(lampX, lampY, Math.max(1, 4.5 * s), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        // Light cone onto road
+        const coneGrad = ctx.createLinearGradient(0, lampY, 0, baseY);
+        coneGrad.addColorStop(0, side < 0 ? 'rgba(0,229,255,0.16)' : 'rgba(255,154,60,0.16)');
+        coneGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = coneGrad;
+        ctx.beginPath();
+        ctx.moveTo(lampX - 4 * s, lampY);
+        ctx.lineTo(lampX + 4 * s, lampY);
+        ctx.lineTo(lampX + side * 30 * s + 22 * s, baseY);
+        ctx.lineTo(lampX + side * 30 * s - 22 * s, baseY);
+        ctx.closePath();
+        ctx.fill();
+        // Ground light pool
+        ctx.fillStyle = side < 0 ? 'rgba(0,229,255,0.10)' : 'rgba(255,154,60,0.10)';
+        ctx.beginPath();
+        ctx.ellipse(lampX + side * 30 * s, baseY, 26 * s, 5 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // ================= PLAYERS =================
+
+  private drawPlayer(player: PlayerData, speedNorm: number) {
+    const ctx = this.ctx;
+    const isSliding = player.state === 'sliding';
+    const lean = Math.max(-0.35, Math.min(0.35, (getLaneX(player.lane) - this.smoothX) * 0.02));
+    const height = isSliding ? PLAYER_SLIDE_HEIGHT : PLAYER_HEIGHT;
+    const width = PLAYER_WIDTH;
+    const drawX = this.smoothX - width / 2;
+    const drawY = isSliding ? GROUND_Y - PLAYER_SLIDE_HEIGHT : player.y;
+    const bob = player.state === 'running' ? Math.sin(this.frameCount * 0.45) * 2 : 0;
+
+    // Shadow (shrinks when jumping)
+    const airH = Math.max(0, GROUND_Y - PLAYER_HEIGHT - player.y);
+    const shScale = Math.max(0.4, 1 - airH / 260);
+    ctx.fillStyle = `rgba(0,0,0,${(0.5 * shScale).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.ellipse(this.smoothX, GROUND_Y + 6, width * 0.62 * shScale, 7 * shScale, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Neon ground glow
+    ctx.fillStyle = player.color + '33';
+    ctx.beginPath();
+    ctx.ellipse(this.smoothX, GROUND_Y + 4, width * 0.9, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Speed afterimage trail
+    if (speedNorm > 0.15 && player.state === 'running') {
+      ctx.save();
+      ctx.globalAlpha = 0.14 + speedNorm * 0.12;
+      ctx.fillStyle = player.color;
+      this.roundRect(drawX - 8 * speedNorm, drawY + bob + 6, width, height, 6);
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.shadowColor = player.color;
+    ctx.shadowBlur = 22;
+    this.drawRunner(drawX, drawY + bob, width, height, player.color, lean, player.state);
+    ctx.restore();
+
+    // Run dust / slide sparks
+    if (player.state === 'running' && this.frameCount % 2 === 0) {
+      this.addParticle(this.smoothX + (Math.random() - 0.5) * 18, GROUND_Y - 2, 'rgba(160,160,180,0.8)', 'dust');
+    }
+    if (isSliding && this.frameCount % 2 === 0) {
+      this.addParticle(this.smoothX + 12, GROUND_Y - 4, '#ffd34d', 'spark');
+      this.addParticle(this.smoothX - 10, GROUND_Y - 2, player.color, 'spark');
+    }
+    if (player.state === 'jumping') {
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(this.smoothX, GROUND_Y - 2, 20, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /** Detailed neon street-runner character */
+  private drawRunner(x: number, y: number, w: number, h: number, color: string, lean: number, state: string) {
+    const ctx = this.ctx;
+    const cx = x + w / 2;
+    const phase = this.frameCount * 0.35;
+    const runA = Math.sin(phase);
+    const runB = Math.sin(phase + Math.PI);
+
+    ctx.save();
+    ctx.translate(cx, y + h);
+    ctx.rotate(lean * 0.9 + (state === 'jumping' ? -0.12 : 0));
+    ctx.translate(-cx, -(y + h));
+
+    const dark = this.darkenColor(color, 0.45);
+    const darker = this.darkenColor(color, 0.28);
+
+    if (state === 'sliding') {
+      // Low slide: extended legs, leaned-back torso, sparks
+      ctx.fillStyle = darker;
+      ctx.fillRect(x - 8, y + h - 12, 26, 8); // leading leg
+      ctx.fillRect(x + 14, y + h - 8, 22, 7); // trailing leg
+      // Shoes glow
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x - 11, y + h - 12, 5, 8);
+      const torsoGrad = ctx.createLinearGradient(0, y, 0, y + h);
+      torsoGrad.addColorStop(0, color);
+      torsoGrad.addColorStop(1, dark);
+      ctx.fillStyle = torsoGrad;
+      this.roundRect(x + 2, y + 2, w - 4, 16, 7);
+      // Head low
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x + w - 6, y + 6, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillRect(x + w - 11, y + 3, 9, 3);
+      ctx.restore();
+      return;
+    }
+
+    const jumping = state === 'jumping';
+    const legSwing = jumping ? 0.4 : 1;
+
+    // Legs — segmented, animated
+    ctx.lineCap = 'round';
+    // Back leg
+    ctx.strokeStyle = darker;
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(cx, y + h - 26);
+    const bKneeX = cx - 6 + runB * 7 * legSwing;
+    const bKneeY = y + h - 14;
+    const bFootX = cx - 4 + runB * 11 * legSwing;
+    ctx.moveTo(cx, y + h - 26);
+    ctx.lineTo(bKneeX, bKneeY);
+    ctx.lineTo(bFootX, y + h - (jumping ? 12 : 1));
+    ctx.stroke();
+    // Front leg
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    const fKneeX = cx + 6 + runA * 7 * legSwing;
+    const fKneeY = y + h - 14;
+    const fFootX = cx + 4 + runA * 11 * legSwing;
+    ctx.moveTo(cx, y + h - 26);
+    ctx.lineTo(fKneeX, fKneeY);
+    ctx.lineTo(fFootX, y + h - (jumping ? 6 : 1));
+    ctx.stroke();
+    // Shoes
+    ctx.fillStyle = '#f5f5ff';
+    this.roundRect(fFootX - 6, y + h - (jumping ? 10 : 5), 13, 5, 2);
+    this.roundRect(bFootX - 6, y + h - (jumping ? 16 : 5), 13, 5, 2);
+    ctx.fillStyle = color;
+    ctx.fillRect(fFootX - 6, y + h - (jumping ? 10 : 5), 13, 2);
+    ctx.fillRect(bFootX - 6, y + h - (jumping ? 16 : 5), 13, 2);
+
+    // Torso — athletic hoodie with neon zip
+    const torsoGrad = ctx.createLinearGradient(x, y + 14, x + w, y + 14);
+    torsoGrad.addColorStop(0, dark);
+    torsoGrad.addColorStop(0.5, color);
+    torsoGrad.addColorStop(1, dark);
+    ctx.fillStyle = torsoGrad;
+    this.roundRect(cx - 11, y + 16, 22, h - 40, 7);
+    // Zip glow
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillRect(cx - 1, y + 19, 2, h - 46);
+    // Chest light
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(cx - 6, y + 24, 5, 5);
+
+    // Arms — opposite swing
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8, y + 22);
+    ctx.lineTo(cx - 12 + runB * 8, y + 34);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + 8, y + 22);
+    ctx.lineTo(cx + 12 + runA * 8, y + 34);
+    ctx.stroke();
+    // Hands
+    ctx.fillStyle = this.darkenColor(color, 0.7);
+    ctx.beginPath();
+    ctx.arc(cx - 12 + runB * 8, y + 35, 3.4, 0, Math.PI * 2);
+    ctx.arc(cx + 12 + runA * 8, y + 35, 3.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Head + cap with neon brim
+    ctx.fillStyle = '#f2c79b';
+    ctx.beginPath();
+    ctx.arc(cx + lean * 22, y + 8, 9, 0, Math.PI * 2);
+    ctx.fill();
+    // Cap
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.arc(cx + lean * 22, y + 5, 9.5, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.fillRect(cx + lean * 22 - 2, y + 1, 16, 3);
+    // Visor shine
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';
+    ctx.fillRect(cx + lean * 22 - 4, y + 6, 7, 2.5);
+
+    ctx.restore();
   }
 
   private drawGhostPlayer(player: RoomPlayer) {
     const ctx = this.ctx;
-    const laneX = getLaneX(player.lane);
-    const proj = project3D(laneX, 0);
-
+    const targetX = getLaneX(player.lane);
+    const prev = this.ghostX.get(player.id) ?? targetX;
+    const sx = prev + (targetX - prev) * 0.2;
+    this.ghostX.set(player.id, sx);
     const isSliding = player.state === 'sliding';
     const height = isSliding ? PLAYER_SLIDE_HEIGHT : PLAYER_HEIGHT;
     const width = PLAYER_WIDTH;
-
-    const drawX = proj.x - width / 2;
+    const drawX = sx - width / 2;
     const drawY = isSliding ? GROUND_Y - PLAYER_SLIDE_HEIGHT : player.y;
 
-    ctx.globalAlpha = 0.4;
-    ctx.fillStyle = player.color;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    ctx.shadowColor = player.color;
+    ctx.shadowBlur = 14;
+    this.drawRunner(drawX, drawY, width, height, player.color, 0, player.state);
+    ctx.restore();
 
-    if (isSliding) {
-      this.roundRect(drawX - 5, drawY, width + 10, height, 5);
-    } else {
-      this.drawCharacter(drawX, drawY, width, height, player.color);
-    }
-
-    // Name tag
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '10px "Inter", sans-serif';
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = '#fff';
+    ctx.font = '700 10px Inter, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(player.name, proj.x, drawY - 8);
-
-    ctx.globalAlpha = 1;
+    const label = player.name.length > 10 ? player.name.slice(0, 10) + '…' : player.name;
+    // Pill behind name
+    const tw = ctx.measureText(label).width + 14;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    this.roundRect(sx - tw / 2, drawY - 24, tw, 15, 7);
+    ctx.fillStyle = player.color;
+    ctx.beginPath();
+    ctx.arc(sx - tw / 2 + 8, drawY - 16.5, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, sx + 3, drawY - 13);
+    ctx.restore();
   }
 
-  private drawObstacle(obstacle: Obstacle) {
-    if (obstacle.z < -50 || obstacle.z > 800) return;
+  private drawWreck(speedNorm: number) {
+    // Fading scorch mark where player died
+    const ctx = this.ctx;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(this.smoothX, GROUND_Y + 5, 34, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
+  // ================= OBSTACLES =================
+
+  private drawObstacle(obstacle: Obstacle, distance: number) {
+    if (obstacle.z < -60 || obstacle.z > MAX_Z) return;
     const ctx = this.ctx;
     const laneX = getLaneX(obstacle.lane);
     const proj = project3D(laneX, obstacle.z);
-
     if (proj.scale <= 0.05) return;
 
     const w = obstacle.width * proj.scale;
     const h = obstacle.height * proj.scale;
     const drawX = proj.x - w / 2;
     const drawY = proj.y - h;
+    const s = proj.scale;
 
+    // Ground shadow + neon pool
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.beginPath();
+    ctx.ellipse(proj.x, proj.y + 3 * s, w * 0.55, 5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Distance fog
+    const fog = Math.max(0, Math.min(0.55, obstacle.z / MAX_Z - 0.35));
+
+    ctx.save();
     ctx.shadowColor = obstacle.color;
-    ctx.shadowBlur = 8 * proj.scale;
+    ctx.shadowBlur = 10 * s;
 
     switch (obstacle.type) {
       case 'train':
-        this.drawTrain(drawX, drawY, w, h, proj.scale);
+        this.drawTrain(drawX, drawY, w, h, s);
         break;
       case 'barrier':
-        this.drawBarrier(drawX, drawY, w, h, obstacle.color, proj.scale);
+        this.drawBarrier(drawX, drawY, w, h, s);
         break;
       case 'cone':
-        this.drawCone(drawX, drawY, w, h, proj.scale);
+        this.drawCone(drawX, drawY, w, h, s);
         break;
       case 'tall_barrier':
-        this.drawTallBarrier(drawX, drawY, w, h, proj.scale);
+        this.drawTallBarrier(drawX, drawY, w, h, s);
         break;
     }
+    ctx.restore();
 
-    ctx.shadowBlur = 0;
-  }
-
-  private drawTrain(x: number, y: number, w: number, h: number, scale: number) {
-    const ctx = this.ctx;
-
-    // Train body
-    const trainGrad = ctx.createLinearGradient(x, y, x, y + h);
-    trainGrad.addColorStop(0, '#ff3b30');
-    trainGrad.addColorStop(0.5, '#cc2f26');
-    trainGrad.addColorStop(1, '#991f1a');
-    ctx.fillStyle = trainGrad;
-    this.roundRect(x, y, w, h, 4 * scale);
-
-    // Windows
-    ctx.fillStyle = '#87ceeb55';
-    const windowH = h * 0.2;
-    const windowY = y + h * 0.15;
-    ctx.fillRect(x + w * 0.1, windowY, w * 0.35, windowH);
-    ctx.fillRect(x + w * 0.55, windowY, w * 0.35, windowH);
-
-    // Stripe
-    ctx.fillStyle = '#ffdd5766';
-    ctx.fillRect(x, y + h * 0.5, w, h * 0.08);
-
-    // Light
-    ctx.fillStyle = '#ffff00';
-    ctx.beginPath();
-    ctx.arc(x + w / 2, y + h * 0.75, Math.max(0.5, 3 * scale), 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  private drawBarrier(x: number, y: number, w: number, h: number, color: string, scale: number) {
-    const ctx = this.ctx;
-
-    // Barrier stripes
-    const stripeCount = 4;
-    for (let i = 0; i < stripeCount; i++) {
-      ctx.fillStyle = i % 2 === 0 ? '#f39c12' : '#2c3e50';
-      ctx.fillRect(x + (i * w) / stripeCount, y, w / stripeCount, h);
+    if (fog > 0.02) {
+      ctx.fillStyle = `rgba(20,8,40,${fog.toFixed(2)})`;
+      ctx.fillRect(drawX - 4, drawY - 4, w + 8, h + 8);
     }
 
-    // Posts
-    ctx.fillStyle = '#7f8c8d';
-    ctx.fillRect(x, y, 3 * scale, h + 5 * scale);
-    ctx.fillRect(x + w - 3 * scale, y, 3 * scale, h + 5 * scale);
+    // Proximity warning glow when very close
+    if (obstacle.z < 120 && obstacle.z > -10 && obstacle.lane === this.closestLane()) {
+      const a = (1 - obstacle.z / 120) * 0.25;
+      ctx.fillStyle = `rgba(255,40,60,${a.toFixed(2)})`;
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
   }
 
-  private drawCone(x: number, y: number, w: number, h: number, scale: number) {
-    const ctx = this.ctx;
+  private closestLane(): Lane {
+    // lane whose x is nearest smoothed player x
+    let best: Lane = 1;
+    let bestD = Infinity;
+    for (const l of [0, 1, 2] as Lane[]) {
+      const d = Math.abs(getLaneX(l) - this.smoothX);
+      if (d < bestD) {
+        bestD = d;
+        best = l;
+      }
+    }
+    return best;
+  }
 
-    // Cone body
-    ctx.fillStyle = '#e67e22';
+  private drawTrain(x: number, y: number, w: number, h: number, s: number) {
+    const ctx = this.ctx;
+    // Body — metallic crimson
+    const g = ctx.createLinearGradient(x, 0, x + w, 0);
+    g.addColorStop(0, '#7a1210');
+    g.addColorStop(0.25, '#d63a2f');
+    g.addColorStop(0.5, '#ff5a4a');
+    g.addColorStop(0.75, '#b02318');
+    g.addColorStop(1, '#5d0d0b');
+    ctx.fillStyle = g;
+    this.roundRect(x, y, w, h, Math.max(1, 5 * s));
+
+    // Roof
+    ctx.fillStyle = '#2b2b35';
+    this.roundRect(x + w * 0.05, y - Math.max(1, 6 * s), w * 0.9, Math.max(2, 8 * s), 2);
+    // Pantograph spark
+    if (s > 0.5 && Math.random() < 0.12) {
+      this.addParticle(x + w / 2, y - 8 * s, '#9be8ff', 'spark');
+    }
+
+    // Windshield with sky reflection
+    const wy = y + h * 0.14;
+    const wh = h * 0.22;
+    const wg = ctx.createLinearGradient(0, wy, 0, wy + wh);
+    wg.addColorStop(0, '#bfe9ff');
+    wg.addColorStop(0.5, '#5aa9d6');
+    wg.addColorStop(1, '#1c3d55');
+    ctx.fillStyle = wg;
+    ctx.fillRect(x + w * 0.09, wy, w * 0.35, wh);
+    ctx.fillRect(x + w * 0.56, wy, w * 0.35, wh);
+    // Wiper glint
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillRect(x + w * 0.12, wy + 1, w * 0.08, 1.5);
+
+    // Nose stripe
+    ctx.fillStyle = 'rgba(255,221,87,0.85)';
+    ctx.fillRect(x, y + h * 0.48, w, Math.max(1, h * 0.06));
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x, y + h * 0.54, w, Math.max(1, h * 0.03));
+
+    // Headlights + beams
+    for (const fx of [0.28, 0.72]) {
+      const lx = x + w * fx;
+      const ly = y + h * 0.72;
+      // Beam
+      const beam = ctx.createLinearGradient(0, ly, 0, ly + 60 * s);
+      beam.addColorStop(0, 'rgba(255,250,200,0.20)');
+      beam.addColorStop(1, 'rgba(255,250,200,0)');
+      ctx.fillStyle = beam;
+      ctx.beginPath();
+      ctx.moveTo(lx - 4 * s, ly);
+      ctx.lineTo(lx + 4 * s, ly);
+      ctx.lineTo(lx + 14 * s, ly + 60 * s);
+      ctx.lineTo(lx - 14 * s, ly + 60 * s);
+      ctx.closePath();
+      ctx.fill();
+      // Lamp
+      ctx.save();
+      ctx.shadowColor = '#fff7ae';
+      ctx.shadowBlur = 16 * s;
+      ctx.fillStyle = '#fffbe0';
+      ctx.beginPath();
+      ctx.arc(lx, ly, Math.max(1, 4 * s), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    // Grill + bumper
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(x + w * 0.15 + i * w * 0.18, y + h * 0.82, w * 0.12, Math.max(1, h * 0.05));
+    }
+    ctx.fillStyle = '#3a3a48';
+    this.roundRect(x - 2 * s, y + h - Math.max(2, 7 * s), w + 4 * s, Math.max(2, 7 * s), 2);
+  }
+
+  private drawBarrier(x: number, y: number, w: number, h: number, s: number) {
+    const ctx = this.ctx;
+    // Legs
+    ctx.fillStyle = '#3d3d4d';
+    const legW = Math.max(1.5, 5 * s);
+    ctx.fillRect(x + 2 * s, y + h * 0.25, legW, h * 0.75 + 4 * s);
+    ctx.fillRect(x + w - legW - 2 * s, y + h * 0.25, legW, h * 0.75 + 4 * s);
+    // Feet
+    ctx.fillStyle = '#26262f';
+    ctx.fillRect(x - 4 * s, y + h + 1, 16 * s, 4 * s);
+    ctx.fillRect(x + w - 12 * s, y + h + 1, 16 * s, 4 * s);
+
+    // Striped board with thickness
+    const boardY = y + h * 0.08;
+    const boardH = h * 0.32;
+    const stripes = 6;
+    for (let i = 0; i < stripes; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#ff9d0a' : '#f4f4f8';
+      const sx = x + (i * w) / stripes;
+      ctx.fillRect(sx, boardY, w / stripes + 1, boardH);
+    }
+    // Top highlight / bottom shade
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.fillRect(x, boardY, w, Math.max(1, 2 * s));
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(x, boardY + boardH - Math.max(1, 2 * s), w, Math.max(1, 2 * s));
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, boardY, w, boardH);
+
+    // Blinking beacons
+    const blink = Math.sin(this.frameCount * 0.25) > 0;
+    for (const bx of [x + w * 0.2, x + w * 0.8]) {
+      ctx.save();
+      ctx.shadowColor = blink ? '#ffb300' : '#442200';
+      ctx.shadowBlur = blink ? 14 * s : 0;
+      ctx.fillStyle = blink ? '#ffcf4d' : '#6b4a12';
+      ctx.beginPath();
+      ctx.arc(bx, y - 2 * s, Math.max(1.5, 4.5 * s), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = '#222';
+      ctx.fillRect(bx - 1.5 * s, y + 1, 3 * s, 5 * s);
+    }
+  }
+
+  private drawCone(x: number, y: number, w: number, h: number, s: number) {
+    const ctx = this.ctx;
+    // Base shadow plate
+    ctx.fillStyle = '#23232f';
+    ctx.fillRect(x + w * 0.05, y + h - Math.max(2, 5 * s), w * 0.9, Math.max(2, 5 * s));
+    // Cone body with side shading
+    const g = ctx.createLinearGradient(x, 0, x + w, 0);
+    g.addColorStop(0, '#a33d00');
+    g.addColorStop(0.4, '#ff7a1a');
+    g.addColorStop(0.6, '#ff9a4d');
+    g.addColorStop(1, '#8a2e00');
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(x + w / 2, y);
-    ctx.lineTo(x + w * 0.8, y + h);
-    ctx.lineTo(x + w * 0.2, y + h);
+    ctx.lineTo(x + w * 0.82, y + h - 4 * s);
+    ctx.lineTo(x + w * 0.18, y + h - 4 * s);
     ctx.closePath();
     ctx.fill();
-
-    // White stripe
-    ctx.fillStyle = '#ecf0f1';
-    ctx.fillRect(x + w * 0.3, y + h * 0.4, w * 0.4, h * 0.15);
-
-    // Base
-    ctx.fillStyle = '#d35400';
-    ctx.fillRect(x + w * 0.1, y + h - 3 * scale, w * 0.8, 3 * scale);
+    // Reflective band (glows)
+    ctx.save();
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur = 8 * s;
+    ctx.fillStyle = '#f2f2f7';
+    const bandY = y + h * 0.42;
+    ctx.fillRect(x + w * 0.32, bandY, w * 0.36, h * 0.14);
+    ctx.restore();
+    // Tip light
+    ctx.fillStyle = '#ffd9b0';
+    ctx.beginPath();
+    ctx.arc(x + w / 2, y + 1, Math.max(1, 2.5 * s), 0, Math.PI * 2);
+    ctx.fill();
   }
 
-  private drawTallBarrier(x: number, y: number, w: number, h: number, scale: number) {
+  private drawTallBarrier(x: number, y: number, w: number, h: number, s: number) {
     const ctx = this.ctx;
+    // Side poles full height
+    ctx.fillStyle = '#3a2a55';
+    const poleW = Math.max(2, 7 * s);
+    ctx.fillRect(x - 2 * s, y, poleW, h);
+    ctx.fillRect(x + w - poleW + 2 * s, y, poleW, h);
+    // Pole neon trim
+    ctx.fillStyle = '#b388ff';
+    ctx.fillRect(x - 2 * s, y, Math.max(1, 2 * s), h);
+    ctx.fillRect(x + w - poleW + 2 * s, y, Math.max(1, 2 * s), h);
 
-    // Tall barrier (can slide under)
-    const barGrad = ctx.createLinearGradient(x, y, x, y + h);
-    barGrad.addColorStop(0, '#9b59b6');
-    barGrad.addColorStop(1, '#6c3483');
-    ctx.fillStyle = barGrad;
-    this.roundRect(x, y, w, h * 0.4, 3 * scale);
+    // Top beam
+    const beamH = h * 0.22;
+    const bg = ctx.createLinearGradient(0, y, 0, y + beamH);
+    bg.addColorStop(0, '#5b3fa8');
+    bg.addColorStop(1, '#33235f');
+    ctx.fillStyle = bg;
+    this.roundRect(x - 4 * s, y, w + 8 * s, beamH, 3 * s);
 
-    // Support poles
-    ctx.fillStyle = '#7d3c98';
-    ctx.fillRect(x + 2 * scale, y + h * 0.4, 4 * scale, h * 0.6);
-    ctx.fillRect(x + w - 6 * scale, y + h * 0.4, 4 * scale, h * 0.6);
+    // Hanging curtain (must slide under)
+    const curY = y + beamH;
+    const curH = h * 0.3;
+    const stripes = 5;
+    for (let i = 0; i < stripes; i++) {
+      ctx.fillStyle = i % 2 === 0 ? '#ff2d78' : '#1a1a2e';
+      ctx.fillRect(x + (i * w) / stripes, curY, w / stripes + 1, curH);
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(x, curY + curH - 2 * s, w, 2 * s);
 
-    // Gap indicator (slide under)
-    ctx.fillStyle = '#00ff8833';
-    ctx.fillRect(x, y + h * 0.7, w, h * 0.05);
+    // Sign
+    if (s > 0.28) {
+      const pulse = 0.7 + Math.sin(this.frameCount * 0.15) * 0.3;
+      ctx.save();
+      ctx.shadowColor = '#76ff03';
+      ctx.shadowBlur = 10 * s;
+      ctx.fillStyle = `rgba(20,40,10,${0.9})`;
+      const signW = w * 0.7;
+      const signH = Math.max(8, 13 * s);
+      const signX = x + w * 0.15;
+      const signY = y + beamH * 0.2;
+      this.roundRect(signX, signY, signW, signH, 3 * s);
+      ctx.fillStyle = `rgba(118,255,3,${pulse.toFixed(2)})`;
+      ctx.font = `700 ${Math.max(6, 9 * s)}px Inter, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('▼ SLIDE ▼', x + w / 2, signY + signH / 2 + 0.5);
+      ctx.restore();
+    }
+
+    // Gap glow (safe zone hint)
+    ctx.fillStyle = 'rgba(0,255,150,0.10)';
+    ctx.fillRect(x, y + h * 0.72, w, h * 0.06);
   }
 
   private drawCoin(coin: Coin) {
-    if (coin.z < -50 || coin.z > 800) return;
-
+    if (coin.z < -60 || coin.z > MAX_Z) return;
     const ctx = this.ctx;
     const laneX = getLaneX(coin.lane);
     const proj = project3D(laneX, coin.z);
-
-    if (proj.scale <= 0.05) return;
-
-    const radius = Math.max(1, 8 * proj.scale);
-    const floatY = Math.sin(this.frameCount * 0.08 + coin.floatOffset) * 5 * proj.scale;
+    if (proj.scale <= 0.06) return;
+    const s = proj.scale;
+    const baseR = Math.max(1.5, 9 * s);
+    const floatY = Math.sin(this.frameCount * 0.09 + coin.floatOffset) * 6 * s;
     const cx = proj.x;
-    const cy = proj.y - 25 * proj.scale + floatY;
+    const cy = proj.y - 30 * s + floatY;
 
-    // Outer glow
-    ctx.shadowColor = '#ffd700';
-    ctx.shadowBlur = 12 * proj.scale;
-
-    // Coin body
-    const coinGrad = ctx.createRadialGradient(cx - 2 * proj.scale, cy - 2 * proj.scale, 0, cx, cy, radius);
-    coinGrad.addColorStop(0, '#fff176');
-    coinGrad.addColorStop(0.6, '#ffd700');
-    coinGrad.addColorStop(1, '#ff8f00');
-    ctx.fillStyle = coinGrad;
-
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.ellipse(proj.x, proj.y + 3, baseR, baseR * 0.3, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Inner circle
-    ctx.strokeStyle = '#ff8f0088';
-    ctx.lineWidth = 1 * proj.scale;
-    ctx.beginPath();
-    ctx.arc(cx, cy, radius * 0.6, 0, Math.PI * 2);
-    ctx.stroke();
+    // Spin: horizontal squash
+    const spin = Math.abs(Math.cos(this.frameCount * 0.12 + coin.floatOffset));
+    const rx = Math.max(1.2, baseR * (0.25 + spin * 0.75));
 
-    // $ symbol
-    if (proj.scale > 0.3) {
-      ctx.fillStyle = '#ff8f00';
-      ctx.font = `${Math.max(6, 10 * proj.scale)}px "Inter", sans-serif`;
+    ctx.save();
+    ctx.shadowColor = '#ffd700';
+    ctx.shadowBlur = 14 * s;
+    const g = ctx.createLinearGradient(cx - rx, cy - baseR, cx + rx, cy + baseR);
+    g.addColorStop(0, '#fff9c4');
+    g.addColorStop(0.45, '#ffd700');
+    g.addColorStop(1, '#c77800');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, baseR, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Inner ring + glint
+    ctx.strokeStyle = 'rgba(180,100,0,0.8)';
+    ctx.lineWidth = Math.max(0.6, 1.2 * s);
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx * 0.62, baseR * 0.62, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.ellipse(cx - rx * 0.3, cy - baseR * 0.35, Math.max(0.6, rx * 0.16), Math.max(0.8, baseR * 0.22), -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (s > 0.35) {
+      ctx.fillStyle = '#a85f00';
+      ctx.font = `800 ${Math.max(6, 11 * s)}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('$', cx, cy + 1);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(Math.max(0.25, rx / baseR), 1);
+      ctx.fillText('$', 0, 1);
+      ctx.restore();
     }
-
-    ctx.shadowBlur = 0;
   }
 
-  private drawSpeedLines(speed: number) {
-    if (speed < 5) return;
-    const ctx = this.ctx;
-    const intensity = (speed - 5) / (12 - 5);
-    const count = Math.floor(intensity * 8);
+  // ================= SPEED FX =================
 
-    for (let i = 0; i < count; i++) {
+  private drawGroundStreaks(speed: number, speedNorm: number) {
+    if (speed < 5.5) return;
+    const ctx = this.ctx;
+    const n = 4 + Math.floor(speedNorm * 8);
+    for (let i = 0; i < n; i++) {
+      const y = GROUND_Y - 40 + Math.random() * 90;
+      const t = (y - VANISH_Y) / (GROUND_Y - VANISH_Y);
       const x = Math.random() * CANVAS_WIDTH;
-      const y = 250 + Math.random() * (GROUND_Y - 250);
-      const len = 20 + Math.random() * 40;
-      ctx.strokeStyle = `rgba(255, 255, 255, ${0.05 + intensity * 0.1})`;
-      ctx.lineWidth = 1;
+      const len = (30 + Math.random() * 90) * (0.5 + speedNorm);
+      ctx.strokeStyle = `rgba(255,255,255,${(0.04 + speedNorm * 0.10).toFixed(3)})`;
+      ctx.lineWidth = 1 + t * 2;
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(x, y + len);
+      ctx.lineTo(x - (x - VANISH_X) * 0.08, y + len * 0.25);
       ctx.stroke();
     }
+  }
+
+  private drawSpeedLines(speed: number, speedNorm: number) {
+    if (speed < 6) return;
+    const ctx = this.ctx;
+    const count = Math.floor(3 + speedNorm * 10);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < count; i++) {
+      const edge = i % 2 === 0 ? 0 : 1;
+      const x = edge === 0 ? Math.random() * 90 : CANVAS_WIDTH - Math.random() * 90;
+      const y = 240 + Math.random() * 220;
+      const len = 40 + Math.random() * 110 * (0.5 + speedNorm);
+      const grad = ctx.createLinearGradient(0, y, 0, y + len);
+      grad.addColorStop(0, 'rgba(0,229,255,0)');
+      grad.addColorStop(0.5, `rgba(160,220,255,${(0.10 + speedNorm * 0.22).toFixed(3)})`);
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.5 + Math.random() * 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + (VANISH_X - x) * 0.03, y + len);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawColorGrade(speedNorm: number) {
+    const ctx = this.ctx;
+    // Subtle top cool / bottom warm grade + speed warmth
+    const g = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
+    g.addColorStop(0, 'rgba(0,180,255,0.04)');
+    g.addColorStop(0.6, 'rgba(0,0,0,0)');
+    g.addColorStop(1, `rgba(255,45,120,${(0.03 + speedNorm * 0.05).toFixed(3)})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
   private drawVignette() {
     const ctx = this.ctx;
     const gradient = ctx.createRadialGradient(
-      CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.3,
-      CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.8
+      VANISH_X, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.32,
+      VANISH_X, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.78
     );
     gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+    gradient.addColorStop(1, 'rgba(2, 2, 10, 0.5)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
 
-  // ============================================
-  // Particle System
-  // ============================================
+  // ================= PARTICLES =================
 
-  addParticle(x: number, y: number, color: string, type: 'dust' | 'spark' | 'coin') {
-    const count = type === 'coin' ? 5 : 2;
+  addParticle(x: number, y: number, color: string, type: 'dust' | 'spark' | 'coin' | 'crash' | 'smoke' = 'dust') {
+    const count = type === 'coin' ? 5 : type === 'crash' ? 8 : type === 'smoke' ? 4 : 2;
     for (let i = 0; i < count; i++) {
+      const speedMul = type === 'spark' ? 2 : 1;
       this.particles.push({
-        x: x + (Math.random() - 0.5) * 20,
-        y: y + (Math.random() - 0.5) * 5,
-        vx: (Math.random() - 0.5) * 3,
-        vy: -Math.random() * 3 - 1,
+        x: x + (Math.random() - 0.5) * 22,
+        y: y + (Math.random() - 0.5) * 6,
+        vx: (Math.random() - 0.5) * 3.2 * speedMul,
+        vy: -Math.random() * 3.4 - 0.6,
+        life: 1,
+        decay: type === 'smoke' ? 0.015 + Math.random() * 0.015 : 0.025 + Math.random() * 0.035,
+        size: type === 'coin' ? 2.5 + Math.random() * 2.5 : type === 'smoke' ? 6 + Math.random() * 8 : 1.6 + Math.random() * 2.4,
+        color,
+        kind: type,
+      });
+    }
+    if (this.particles.length > 400) {
+      this.particles.splice(0, this.particles.length - 400);
+    }
+  }
+
+  private burst(x: number, y: number, color: string, n: number, kind: Particle['kind']) {
+    for (let i = 0; i < n; i++) {
+      this.particles.push({
+        x: x + (Math.random() - 0.5) * 30,
+        y: y + (Math.random() - 0.5) * 24,
+        vx: (Math.random() - 0.5) * 7,
+        vy: -Math.random() * 6 - 1,
         life: 1,
         decay: 0.02 + Math.random() * 0.03,
-        size: type === 'coin' ? 3 + Math.random() * 3 : 2 + Math.random() * 2,
-        color,
+        size: 2 + Math.random() * (kind === 'crash' ? 5 : 3),
+        color: kind === 'crash' && Math.random() < 0.4 ? '#ffd34d' : color,
+        kind,
       });
     }
   }
 
   private updateAndDrawParticles() {
     const ctx = this.ctx;
-    this.particles = this.particles.filter(p => p.life > 0);
-
+    this.particles = this.particles.filter((p) => p.life > 0);
     for (const p of this.particles) {
       p.x += p.vx;
       p.y += p.vy;
-      p.vy += 0.05;
+      p.vy += p.kind === 'smoke' ? -0.02 : 0.09;
+      p.vx *= 0.985;
       p.life -= p.decay;
-
-      const radius = p.size * p.life;
-      if (radius <= 0 || p.life <= 0) continue;
-
-      ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+      if (p.life <= 0) continue;
+      const r = Math.max(0.1, p.size * p.life);
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life * (p.kind === 'smoke' ? 0.4 : 1)));
       ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
 
-  // ============================================
-  // Helpers
-  // ============================================
+  // ================= HELPERS =================
 
   private roundRect(x: number, y: number, w: number, h: number, r: number) {
     const ctx = this.ctx;
+    const rr = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
     ctx.closePath();
     ctx.fill();
   }
 
   private darkenColor(hex: string, factor: number): string {
+    if (!hex.startsWith('#')) return hex;
     const r = parseInt(hex.slice(1, 3), 16);
     const g = parseInt(hex.slice(3, 5), 16);
     const b = parseInt(hex.slice(5, 7), 16);
+    if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return hex;
     return `rgb(${Math.floor(r * factor)}, ${Math.floor(g * factor)}, ${Math.floor(b * factor)})`;
   }
 }
@@ -649,6 +1328,7 @@ interface Particle {
   decay: number;
   size: number;
   color: string;
+  kind: 'dust' | 'spark' | 'coin' | 'crash' | 'smoke';
 }
 
 interface Star {

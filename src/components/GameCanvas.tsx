@@ -18,7 +18,7 @@ interface GameCanvasProps {
   otherPlayers: RoomPlayer[];
   onUpdate: (data: PlayerUpdateData) => void;
   onDied: (finalScore: number) => void;
-  onScoreChange: (score: number, distance: number, coins: number) => void;
+  onScoreChange: (score: number, distance: number, coins: number, speed: number) => void;
   isStarted: boolean;
 }
 
@@ -62,7 +62,7 @@ export default function GameCanvas({
     const renderer = new GameRenderer(ctx);
 
     engine.onScoreChange = (score, distance, coins) => {
-      onScoreChange(score, distance, coins);
+      onScoreChange(score, distance, coins, engine.state.speed);
     };
 
     engine.onGameOver = () => {
@@ -222,13 +222,72 @@ export default function GameCanvas({
     };
   }, []);
 
+  const press = useCallback((action: 'left' | 'right' | 'jump' | 'slide') => {
+    const engine = engineRef.current;
+    if (!engine || !engine.state.isRunning) return;
+    if (action === 'left') engine.moveLeft();
+    if (action === 'right') engine.moveRight();
+    if (action === 'jump') {
+      engine.jump();
+      playJumpSound();
+    }
+    if (action === 'slide') {
+      engine.slide();
+      playSlideSound();
+    }
+  }, []);
+
   return (
-    <canvas
-      ref={canvasRef}
-      width={CANVAS_WIDTH}
-      height={CANVAS_HEIGHT}
-      className="w-full max-w-[800px] rounded-xl border border-white/10 shadow-2xl shadow-purple-900/30"
-      style={{ imageRendering: 'auto', aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}` }}
-    />
+    <div className="relative w-full max-w-[820px]">
+      {/* Neon race frame */}
+      <div className="absolute -inset-[2px] rounded-[18px] bg-gradient-to-r from-cyan-400/60 via-fuchsia-500/50 to-amber-300/50 blur-[6px] opacity-70 pointer-events-none" />
+      <div className="relative rounded-2xl overflow-hidden border border-white/15 bg-black shadow-[0_30px_80px_-20px_rgba(124,77,255,0.55)]">
+        <canvas
+          ref={canvasRef}
+          width={CANVAS_WIDTH}
+          height={CANVAS_HEIGHT}
+          className="w-full block"
+          style={{ imageRendering: 'auto', aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}` }}
+        />
+        {/* Cinematic overlays */}
+        <div className="pointer-events-none absolute inset-0 scanlines opacity-[0.14]" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/50 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/55 to-transparent" />
+        {/* Corner brackets */}
+        <div className="pointer-events-none absolute left-3 top-3 h-6 w-6 border-l-2 border-t-2 border-cyan-300/80 rounded-tl-md" />
+        <div className="pointer-events-none absolute right-3 top-3 h-6 w-6 border-r-2 border-t-2 border-fuchsia-400/80 rounded-tr-md" />
+        <div className="pointer-events-none absolute left-3 bottom-3 h-6 w-6 border-l-2 border-b-2 border-cyan-300/60 rounded-bl-md" />
+        <div className="pointer-events-none absolute right-3 bottom-3 h-6 w-6 border-r-2 border-b-2 border-fuchsia-400/60 rounded-br-md" />
+        {/* REC / speed tag */}
+        <div className="pointer-events-none absolute left-4 bottom-3 flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-white/60">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+          live render • 60fps
+        </div>
+      </div>
+
+      {/* Mobile touch controls */}
+      <div className="mt-3 grid grid-cols-4 gap-2 md:hidden">
+        {(
+          [
+            { label: '◀', action: 'left' as const },
+            { label: '▶', action: 'right' as const },
+            { label: '⤒ JUMP', action: 'jump' as const },
+            { label: '⤓ SLIDE', action: 'slide' as const },
+          ]
+        ).map((b) => (
+          <button
+            key={b.action}
+            onTouchStart={(e) => {
+              e.preventDefault();
+              press(b.action);
+            }}
+            onClick={() => press(b.action)}
+            className="rounded-xl border border-white/15 bg-white/8 py-3 text-sm font-bold text-white/85 backdrop-blur-md active:scale-95 active:bg-cyan-400/25 transition"
+          >
+            {b.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }

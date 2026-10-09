@@ -12,9 +12,9 @@ export const PLAYER_HEIGHT = 60;
 export const PLAYER_SLIDE_HEIGHT = 25;
 export const JUMP_FORCE = -14;
 export const GRAVITY = 0.6;
-export const BASE_SPEED = 4;
-export const MAX_SPEED = 12;
-export const SPEED_INCREMENT = 0.0005;
+export const BASE_SPEED = 5;
+export const MAX_SPEED = 14;
+export const SPEED_INCREMENT = 0.0008;
 
 export type Lane = 0 | 1 | 2;
 

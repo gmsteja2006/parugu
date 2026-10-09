@@ -152,7 +152,7 @@ export class GameEngine {
   coinSequence: CoinSpawn[];
   nextObstacleIndex: number = 0;
   nextCoinIndex: number = 0;
-  onScoreChange?: (score: number, distance: number, coins: number) => void;
+  onScoreChange?: (score: number, distance: number, coins: number, speed: number) => void;
   onGameOver?: () => void;
   onCollectCoin?: () => void;
 
@@ -256,7 +256,7 @@ export class GameEngine {
     this.checkCollisions();
 
     // Notify score change
-    this.onScoreChange?.(player.score, player.distance, player.coins);
+    this.onScoreChange?.(player.score, player.distance, player.coins, this.state.speed);
   }
 
   private spawnObstacles() {
