@@ -84,11 +84,12 @@ export function generateObstacleSequence(seed: number, count: number = 500): Obs
     return rng / 0x7fffffff;
   }
 
-  let distance = 600;
+  let distance = 700;
   for (let i = 0; i < count; i++) {
     const type = types[Math.floor(nextRandom() * types.length)];
     const lane = Math.floor(nextRandom() * LANE_COUNT) as Lane;
-    const gap = 250 + nextRandom() * 300;
+    // Generous spacing so obstacles arrive gradually, never suddenly
+    const gap = 430 + nextRandom() * 380;
 
     // Sometimes spawn obstacles in multiple lanes
     spawns.push({
@@ -98,14 +99,15 @@ export function generateObstacleSequence(seed: number, count: number = 500): Obs
       distance,
     });
 
-    // 30% chance of a second obstacle in a different lane
-    if (nextRandom() < 0.3 && i > 10) {
+    // 22% chance of a second obstacle in a different lane, staggered
+    // (never same instant, never all 3 lanes — one lane always free)
+    if (nextRandom() < 0.22 && i > 15) {
       const otherLane = ((lane + 1 + Math.floor(nextRandom() * 2)) % 3) as Lane;
       spawns.push({
         id: `obs_${i}b`,
         type: types[Math.floor(nextRandom() * types.length)],
         lane: otherLane,
-        distance: distance + nextRandom() * 30,
+        distance: distance + 80 + nextRandom() * 80,
       });
     }
 
@@ -262,7 +264,7 @@ export class GameEngine {
   private spawnObstacles() {
     while (
       this.nextObstacleIndex < this.obstacleSequence.length &&
-      this.obstacleSequence[this.nextObstacleIndex].distance < this.state.distance + 1200
+      this.obstacleSequence[this.nextObstacleIndex].distance < this.state.distance + 1500
     ) {
       const spawn = this.obstacleSequence[this.nextObstacleIndex];
       const def = OBSTACLE_DEFS[spawn.type];
@@ -284,17 +286,24 @@ export class GameEngine {
   private spawnCoins() {
     while (
       this.nextCoinIndex < this.coinSequence.length &&
-      this.coinSequence[this.nextCoinIndex].distance < this.state.distance + 1200
+      this.coinSequence[this.nextCoinIndex].distance < this.state.distance + 1500
     ) {
       const spawn = this.coinSequence[this.nextCoinIndex];
-      const coin: Coin = {
-        id: spawn.id,
-        lane: spawn.lane,
-        z: spawn.distance - this.state.distance + 800,
-        collected: false,
-        floatOffset: Math.random() * Math.PI * 2,
-      };
-      this.state.coins.push(coin);
+      // Never drop coins inside an obstacle — feels unfair. Skip coins that
+      // would spawn within a danger window of an obstacle in the same lane.
+      const blocked = this.obstacleSequence.some(
+        (o) => o.lane === spawn.lane && Math.abs(o.distance - spawn.distance) < 75
+      );
+      if (!blocked) {
+        const coin: Coin = {
+          id: spawn.id,
+          lane: spawn.lane,
+          z: spawn.distance - this.state.distance + 800,
+          collected: false,
+          floatOffset: Math.random() * Math.PI * 2,
+        };
+        this.state.coins.push(coin);
+      }
       this.nextCoinIndex++;
     }
   }
