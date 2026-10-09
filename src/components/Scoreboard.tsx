@@ -6,7 +6,7 @@
 
 import React from 'react';
 import type { RoomPlayer } from '@/game/types';
-import { BASE_SPEED, MAX_SPEED } from '@/game/types';
+import { BASE_SPEED, MAX_SPEED, DIFFICULTY_CONFIG, parseDifficulty, type Difficulty } from '@/game/types';
 
 interface ScoreboardProps {
   currentPlayerId: string;
@@ -15,6 +15,7 @@ interface ScoreboardProps {
   currentDistance: number;
   currentCoins: number;
   currentSpeed?: number;
+  difficulty?: Difficulty;
 }
 
 export default function Scoreboard({
@@ -24,6 +25,7 @@ export default function Scoreboard({
   currentDistance,
   currentCoins,
   currentSpeed = BASE_SPEED,
+  difficulty = 'medium',
 }: ScoreboardProps) {
   const sortedPlayers = [...players].sort((a, b) => {
     const scoreA = a.id === currentPlayerId ? currentScore : a.score;
@@ -34,6 +36,7 @@ export default function Scoreboard({
   const speedNorm = Math.max(0, Math.min(1, (currentSpeed - BASE_SPEED) / Math.max(1, MAX_SPEED - BASE_SPEED)));
   const kmh = Math.round(68 + speedNorm * 132 + (currentDistance % 7));
   const nitro = speedNorm > 0.65;
+  const diffCfg = DIFFICULTY_CONFIG[parseDifficulty(difficulty)];
 
   return (
     <div className="absolute top-0 left-0 right-0 p-3 pointer-events-none z-20">
@@ -78,6 +81,12 @@ export default function Scoreboard({
             <div className="hidden sm:flex items-center gap-1.5 rounded-lg border border-white/10 bg-black/55 backdrop-blur-md px-2.5 py-1.5 shadow text-[10px] font-mono uppercase tracking-widest text-white/50">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
               live
+            </div>
+            <div
+              className="flex items-center rounded-lg border px-2.5 py-1.5 shadow text-[10px] font-black uppercase tracking-[0.18em]"
+              style={{ borderColor: diffCfg.color + '55', backgroundColor: diffCfg.color + '14', color: diffCfg.color }}
+            >
+              {diffCfg.label}
             </div>
           </div>
         </div>

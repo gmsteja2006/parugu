@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { generateObstacleSequence, generateCoinSequence } from '@/game/engine';
-import { type Room, type RoomPlayer, type PlayerUpdateData, PLAYER_COLORS } from '@/game/types';
+import { type Room, type RoomPlayer, type PlayerUpdateData, type Difficulty, DIFFICULTY_CONFIG, PLAYER_COLORS } from '@/game/types';
 import StartScreen from './StartScreen';
 import Lobby from './Lobby';
 import GameCanvas from './GameCanvas';
@@ -32,6 +32,7 @@ export default function GameView() {
   const [currentDistance, setCurrentDistance] = useState(0);
   const [currentCoins, setCurrentCoins] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(5);
+  const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [gameStarted, setGameStarted] = useState(false);
   const [isServerlessMode, setIsServerlessMode] = useState(false);
 
@@ -115,7 +116,7 @@ export default function GameView() {
       setCurrentScore(0);
       setCurrentDistance(0);
       setCurrentCoins(0);
-      setCurrentSpeed(5);
+      setCurrentSpeed(DIFFICULTY_CONFIG[startRoom.difficulty ?? 'medium'].baseSpeed);
     });
 
     socket.on('game:player-update', (player: RoomPlayer) => {
@@ -238,7 +239,7 @@ export default function GameView() {
         setCurrentScore(0);
         setCurrentDistance(0);
         setCurrentCoins(0);
-        setCurrentSpeed(5);
+        setCurrentSpeed(DIFFICULTY_CONFIG[targetRoom.difficulty ?? 'medium'].baseSpeed);
       }
     }, 1000);
   }, []);
@@ -275,15 +276,17 @@ export default function GameView() {
       createdAt: Date.now(),
       hostId: pid,
       seed,
-      obstacleSequence: generateObstacleSequence(seed),
+      difficulty,
+      obstacleSequence: generateObstacleSequence(seed, difficulty),
       coinSequence: generateCoinSequence(seed),
     };
 
     setRoom(soloRoom);
     setPlayerId(pid);
     setIsServerlessMode(false);
+    setCurrentSpeed(DIFFICULTY_CONFIG[difficulty].baseSpeed);
     startCountdownFlow(soloRoom);
-  }, [startCountdownFlow]);
+  }, [startCountdownFlow, difficulty]);
 
   // Create Room
   const handleCreateRoom = useCallback(async (playerName: string) => {
@@ -294,7 +297,7 @@ export default function GameView() {
     let socketResponded = false;
 
     if (socket.connected) {
-      socket.emit('room:create', playerName);
+      socket.emit('room:create', playerName, difficulty);
       return;
     }
 
@@ -306,7 +309,7 @@ export default function GameView() {
         const res = await fetch('/api/rooms', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ playerName }),
+          body: JSON.stringify({ playerName, difficulty }),
         });
         const data = await res.json();
         if (data.success && data.room) {
@@ -325,12 +328,12 @@ export default function GameView() {
       }
     }, 1500);
 
-    socket.emit('room:create', playerName);
+    socket.emit('room:create', playerName, difficulty);
     socket.once('room:joined', () => {
       socketResponded = true;
       clearTimeout(fallbackTimer);
     });
-  }, []);
+  }, [difficulty]);
 
   // Join Room
   const handleJoinRoom = useCallback(async (roomCode: string, playerName: string) => {
@@ -528,6 +531,8 @@ export default function GameView() {
           onPlaySolo={handlePlaySolo}
           isConnecting={isConnecting}
           error={error}
+          difficulty={difficulty}
+          onDifficultyChange={setDifficulty}
         />
       )}
 
@@ -578,6 +583,7 @@ export default function GameView() {
               currentDistance={currentDistance}
               currentCoins={currentCoins}
               currentSpeed={currentSpeed}
+              difficulty={room.difficulty ?? difficulty}
             />
             <div className="pt-[92px]">
               <GameCanvas
@@ -585,6 +591,7 @@ export default function GameView() {
                 playerName={currentPlayer.name}
                 playerColor={currentPlayer.color}
                 seed={room.seed}
+                difficulty={room.difficulty ?? difficulty}
                 otherPlayers={otherPlayers}
                 onUpdate={handleGameUpdate}
                 onDied={handleGameDied}

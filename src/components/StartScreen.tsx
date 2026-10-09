@@ -5,6 +5,7 @@
 // ============================================
 
 import React, { useState } from 'react';
+import { DIFFICULTY_ORDER, DIFFICULTY_CONFIG, type Difficulty } from '@/game/types';
 
 interface StartScreenProps {
   onCreateRoom: (playerName: string) => void;
@@ -12,9 +13,11 @@ interface StartScreenProps {
   onPlaySolo: (playerName: string) => void;
   isConnecting: boolean;
   error: string | null;
+  difficulty: Difficulty;
+  onDifficultyChange: (d: Difficulty) => void;
 }
 
-export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isConnecting, error }: StartScreenProps) {
+export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isConnecting, error, difficulty, onDifficultyChange }: StartScreenProps) {
   const [playerName, setPlayerName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
@@ -106,6 +109,36 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
               </div>
 
               <div className="pt-4 space-y-3">
+                {/* Difficulty select */}
+                <div>
+                  <label className="block text-white/50 text-xs uppercase tracking-wider mb-2 font-medium">
+                    Difficulty
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {DIFFICULTY_ORDER.map((d) => {
+                      const cfg = DIFFICULTY_CONFIG[d];
+                      const active = difficulty === d;
+                      return (
+                        <button
+                          key={d}
+                          onClick={() => onDifficultyChange(d)}
+                          className={`rounded-xl border px-2 py-2.5 text-center transition-all duration-200 ${
+                            active
+                              ? 'bg-white/10 scale-[1.03]'
+                              : 'bg-white/[0.03] border-white/10 hover:bg-white/[0.07] opacity-70 hover:opacity-100'
+                          }`}
+                          style={active ? { borderColor: cfg.color, boxShadow: `0 0 18px ${cfg.color}44` } : undefined}
+                        >
+                          <p className="text-sm font-black" style={{ color: active ? cfg.color : '#fff' }}>
+                            {cfg.label}
+                          </p>
+                          <p className="text-[10px] text-white/40 mt-0.5">{cfg.tagline}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <button
                   onClick={() => onPlaySolo(playerName.trim() || 'Runner')}
                   className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300"

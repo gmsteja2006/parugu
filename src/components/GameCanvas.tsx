@@ -7,7 +7,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { GameEngine, generateObstacleSequence, generateCoinSequence, createPlayer } from '@/game/engine';
 import { GameRenderer } from '@/game/renderer';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, type RoomPlayer, type PlayerUpdateData, PLAYER_COLORS } from '@/game/types';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, type RoomPlayer, type PlayerUpdateData, type Difficulty, PLAYER_COLORS } from '@/game/types';
 import { playJumpSound, playSlideSound, playCoinSound, playCrashSound } from '@/game/sounds';
 
 interface GameCanvasProps {
@@ -15,6 +15,7 @@ interface GameCanvasProps {
   playerName: string;
   playerColor: string;
   seed: number;
+  difficulty: Difficulty;
   otherPlayers: RoomPlayer[];
   onUpdate: (data: PlayerUpdateData) => void;
   onDied: (finalScore: number) => void;
@@ -27,6 +28,7 @@ export default function GameCanvas({
   playerName,
   playerColor,
   seed,
+  difficulty,
   otherPlayers,
   onUpdate,
   onDied,
@@ -55,10 +57,10 @@ export default function GameCanvas({
     if (!ctx) return;
 
     const player = createPlayer(playerId, playerName, playerColor);
-    const obstacleSeq = generateObstacleSequence(seed);
+    const obstacleSeq = generateObstacleSequence(seed, difficulty);
     const coinSeq = generateCoinSequence(seed);
 
-    const engine = new GameEngine(player, obstacleSeq, coinSeq);
+    const engine = new GameEngine(player, obstacleSeq, coinSeq, difficulty);
     const renderer = new GameRenderer(ctx);
 
     engine.onScoreChange = (score, distance, coins) => {
@@ -80,7 +82,7 @@ export default function GameCanvas({
     return () => {
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [playerId, playerName, playerColor, seed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [playerId, playerName, playerColor, seed, difficulty]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Start the game loop when isStarted becomes true
   useEffect(() => {

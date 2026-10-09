@@ -6,6 +6,7 @@
 
 import React, { useState } from 'react';
 import type { Room, RoomPlayer } from '@/game/types';
+import { DIFFICULTY_CONFIG, parseDifficulty } from '@/game/types';
 
 interface LobbyProps {
   room: Room;
@@ -45,6 +46,17 @@ export default function Lobby({ room, playerId, onReady, onLeave }: LobbyProps) 
         <div className="text-center mb-8">
           <h2 className="text-3xl font-bold text-white mb-2">Game Lobby</h2>
           <p className="text-white/40 text-sm">Waiting for players to join and ready up</p>
+          {(() => {
+            const cfg = DIFFICULTY_CONFIG[parseDifficulty((room as Room).difficulty)];
+            return (
+              <span
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.2em]"
+                style={{ borderColor: cfg.color + '66', backgroundColor: cfg.color + '14', color: cfg.color }}
+              >
+                {cfg.label} • {cfg.tagline}
+              </span>
+            );
+          })()}
         </div>
 
         {/* Room Code Card */}

@@ -12,9 +12,70 @@ export const PLAYER_HEIGHT = 60;
 export const PLAYER_SLIDE_HEIGHT = 25;
 export const JUMP_FORCE = -14;
 export const GRAVITY = 0.6;
-export const BASE_SPEED = 5;
-export const MAX_SPEED = 14;
+// Gauge bounds for HUD speed bars (min easy base → max hard top)
+export const BASE_SPEED = 4;
+export const MAX_SPEED = 15;
 export const SPEED_INCREMENT = 0.0008;
+
+// ============================================
+// Difficulty Levels
+// ============================================
+
+export type Difficulty = 'easy' | 'medium' | 'hard';
+
+export interface DifficultyConfig {
+  baseSpeed: number;
+  maxSpeed: number;
+  speedIncrement: number;
+  gapMin: number;
+  gapMax: number;
+  doubleChance: number;
+  label: string;
+  tagline: string;
+  color: string;
+}
+
+export const DIFFICULTY_ORDER: Difficulty[] = ['easy', 'medium', 'hard'];
+
+export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
+  easy: {
+    baseSpeed: 4,
+    maxSpeed: 9,
+    speedIncrement: 0.0004,
+    gapMin: 560,
+    gapMax: 980,
+    doubleChance: 0.1,
+    label: 'Easy',
+    tagline: 'Chill cruise',
+    color: '#76ff03',
+  },
+  medium: {
+    baseSpeed: 5,
+    maxSpeed: 14,
+    speedIncrement: 0.0008,
+    gapMin: 430,
+    gapMax: 810,
+    doubleChance: 0.22,
+    label: 'Medium',
+    tagline: 'Classic rush',
+    color: '#ffea00',
+  },
+  hard: {
+    baseSpeed: 6,
+    maxSpeed: 15,
+    speedIncrement: 0.001,
+    gapMin: 350,
+    gapMax: 650,
+    doubleChance: 0.3,
+    label: 'Hard',
+    tagline: 'Insane traffic',
+    color: '#ff5147',
+  },
+};
+
+export function parseDifficulty(value: unknown): Difficulty {
+  return value === 'easy' || value === 'medium' || value === 'hard' ? value : 'medium';
+}
 
 export type Lane = 0 | 1 | 2;
 
@@ -100,6 +161,7 @@ export interface Room {
   isStarted: boolean;
   createdAt: number;
   hostId: string;
+  difficulty: Difficulty;
   // Shared obstacle/coin seed for deterministic generation
   seed: number;
   obstacleSequence: ObstacleSpawn[];
@@ -138,7 +200,7 @@ export interface ServerToClientEvents {
 }
 
 export interface ClientToServerEvents {
-  'room:create': (playerName: string) => void;
+  'room:create': (playerName: string, difficulty?: Difficulty) => void;
   'room:join': (roomCode: string, playerName: string) => void;
   'room:ready': () => void;
   'game:update': (data: PlayerUpdateData) => void;

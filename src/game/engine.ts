@@ -11,6 +11,8 @@ import {
   type ObstacleType,
   type ObstacleSpawn,
   type CoinSpawn,
+  type Difficulty,
+  DIFFICULTY_CONFIG,
   LANE_COUNT,
   LANE_WIDTH,
   CANVAS_WIDTH,
@@ -20,11 +22,12 @@ import {
   PLAYER_SLIDE_HEIGHT,
   JUMP_FORCE,
   GRAVITY,
-  BASE_SPEED,
-  MAX_SPEED,
-  SPEED_INCREMENT,
   OBSTACLE_DEFS,
 } from './types';
+
+// Re-exported so serverless store / UI share one source of truth
+export { DIFFICULTY_CONFIG };
+export type { Difficulty };
 
 let obstacleIdCounter = 0;
 let coinIdCounter = 0;
@@ -57,12 +60,12 @@ export function createPlayer(id: string, name: string, color: string): PlayerDat
   };
 }
 
-export function createGameState(player: PlayerData): GameState {
+export function createGameState(player: PlayerData, difficulty: Difficulty = 'medium'): GameState {
   return {
     player,
     obstacles: [],
     coins: [],
-    speed: BASE_SPEED,
+    speed: DIFFICULTY_CONFIG[difficulty].baseSpeed,
     distance: 0,
     isRunning: false,
     isPaused: false,
@@ -74,8 +77,9 @@ export function createGameState(player: PlayerData): GameState {
 // Deterministic obstacle/coin generation
 // ============================================
 
-export function generateObstacleSequence(seed: number, count: number = 500): ObstacleSpawn[] {
+export function generateObstacleSequence(seed: number, difficulty: Difficulty = 'medium', count: number = 500): ObstacleSpawn[] {
   const spawns: ObstacleSpawn[] = [];
+  const cfg = DIFFICULTY_CONFIG[difficulty];
   let rng = seed;
   const types: ObstacleType[] = ['train', 'barrier', 'cone', 'tall_barrier'];
 
@@ -89,7 +93,7 @@ export function generateObstacleSequence(seed: number, count: number = 500): Obs
     const type = types[Math.floor(nextRandom() * types.length)];
     const lane = Math.floor(nextRandom() * LANE_COUNT) as Lane;
     // Generous spacing so obstacles arrive gradually, never suddenly
-    const gap = 430 + nextRandom() * 380;
+    const gap = cfg.gapMin + nextRandom() * (cfg.gapMax - cfg.gapMin);
 
     // Sometimes spawn obstacles in multiple lanes
     spawns.push({
@@ -99,9 +103,9 @@ export function generateObstacleSequence(seed: number, count: number = 500): Obs
       distance,
     });
 
-    // 22% chance of a second obstacle in a different lane, staggered
+    // Second obstacle in a different lane, staggered
     // (never same instant, never all 3 lanes — one lane always free)
-    if (nextRandom() < 0.22 && i > 15) {
+    if (nextRandom() < cfg.doubleChance && i > 15) {
       const otherLane = ((lane + 1 + Math.floor(nextRandom() * 2)) % 3) as Lane;
       spawns.push({
         id: `obs_${i}b`,
@@ -154,14 +158,16 @@ export class GameEngine {
   coinSequence: CoinSpawn[];
   nextObstacleIndex: number = 0;
   nextCoinIndex: number = 0;
+  readonly difficulty: Difficulty;
   onScoreChange?: (score: number, distance: number, coins: number, speed: number) => void;
   onGameOver?: () => void;
   onCollectCoin?: () => void;
 
-  constructor(player: PlayerData, obstacleSequence: ObstacleSpawn[], coinSequence: CoinSpawn[]) {
-    this.state = createGameState(player);
+  constructor(player: PlayerData, obstacleSequence: ObstacleSpawn[], coinSequence: CoinSpawn[], difficulty: Difficulty = 'medium') {
+    this.state = createGameState(player, difficulty);
     this.obstacleSequence = obstacleSequence;
     this.coinSequence = coinSequence;
+    this.difficulty = difficulty;
   }
 
   start() {
@@ -206,8 +212,9 @@ export class GameEngine {
 
     const player = this.state.player;
 
-    // Increase speed over time
-    this.state.speed = Math.min(MAX_SPEED, BASE_SPEED + this.state.distance * SPEED_INCREMENT);
+    // Increase speed over time (per-difficulty curve)
+    const cfg = DIFFICULTY_CONFIG[this.difficulty];
+    this.state.speed = Math.min(cfg.maxSpeed, cfg.baseSpeed + this.state.distance * cfg.speedIncrement);
 
     // Update distance
     this.state.distance += this.state.speed * deltaTime;

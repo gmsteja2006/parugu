@@ -2,8 +2,8 @@
 // Serverless Rooms Store (shared in memory)
 // ============================================
 
-import type { Room, RoomPlayer } from '@/game/types';
-import { PLAYER_COLORS } from '@/game/types';
+import type { Room, RoomPlayer, Difficulty } from '@/game/types';
+import { PLAYER_COLORS, parseDifficulty } from '@/game/types';
 import { generateObstacleSequence, generateCoinSequence } from '@/game/engine';
 
 interface GlobalWithStore {
@@ -26,10 +26,11 @@ export function generateRoomCode(): string {
   return code;
 }
 
-export function createNewRoom(playerName: string): { room: Room; playerId: string } {
+export function createNewRoom(playerName: string, difficulty: Difficulty = 'medium'): { room: Room; playerId: string } {
   const code = generateRoomCode();
   const playerId = `p_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const seed = Math.floor(Math.random() * 1000000);
+  const roomDifficulty = parseDifficulty(difficulty);
 
   const room: Room = {
     id: `room_${Date.now()}`,
@@ -55,7 +56,8 @@ export function createNewRoom(playerName: string): { room: Room; playerId: strin
     createdAt: Date.now(),
     hostId: playerId,
     seed,
-    obstacleSequence: generateObstacleSequence(seed),
+    difficulty: roomDifficulty,
+    obstacleSequence: generateObstacleSequence(seed, roomDifficulty),
     coinSequence: generateCoinSequence(seed),
   };
 

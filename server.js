@@ -26,6 +26,17 @@ const playerToRoom = new Map();
 const PLAYER_COLORS = ['#00e5ff', '#ff4081', '#76ff03', '#ffea00'];
 const OBSTACLE_TYPES = ['train', 'barrier', 'cone', 'tall_barrier'];
 
+// Mirrors DIFFICULTY_CONFIG in src/game/types.ts (plain JS copy for the socket server)
+const DIFFICULTY = {
+  easy: { gapMin: 560, gapMax: 980, doubleChance: 0.1 },
+  medium: { gapMin: 430, gapMax: 810, doubleChance: 0.22 },
+  hard: { gapMin: 350, gapMax: 650, doubleChance: 0.3 },
+};
+
+function parseDifficulty(value) {
+  return value === 'easy' || value === 'medium' || value === 'hard' ? value : 'medium';
+}
+
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
@@ -39,8 +50,9 @@ function generateSeed() {
   return Math.floor(Math.random() * 1000000);
 }
 
-function generateObstacleSequence(seed, count = 500) {
+function generateObstacleSequence(seed, difficulty = 'medium', count = 500) {
   const spawns = [];
+  const cfg = DIFFICULTY[parseDifficulty(difficulty)] || DIFFICULTY.medium;
   let rng = seed;
 
   function nextRandom() {
@@ -48,21 +60,21 @@ function generateObstacleSequence(seed, count = 500) {
     return rng / 0x7fffffff;
   }
 
-  let distance = 600;
+  let distance = 700;
   for (let i = 0; i < count; i++) {
     const type = OBSTACLE_TYPES[Math.floor(nextRandom() * OBSTACLE_TYPES.length)];
     const lane = Math.floor(nextRandom() * 3);
-    const gap = 250 + nextRandom() * 300;
+    const gap = cfg.gapMin + nextRandom() * (cfg.gapMax - cfg.gapMin);
 
     spawns.push({ id: `obs_${i}`, type, lane, distance });
 
-    if (nextRandom() < 0.3 && i > 10) {
+    if (nextRandom() < cfg.doubleChance && i > 15) {
       const otherLane = ((lane + 1 + Math.floor(nextRandom() * 2)) % 3);
       spawns.push({
         id: `obs_${i}b`,
         type: OBSTACLE_TYPES[Math.floor(nextRandom() * OBSTACLE_TYPES.length)],
         lane: otherLane,
-        distance: distance + nextRandom() * 30,
+        distance: distance + 80 + nextRandom() * 80,
       });
     }
     distance += gap;
@@ -112,10 +124,11 @@ app.prepare().then(() => {
     // ================================
     // Create Room
     // ================================
-    socket.on('room:create', (playerName) => {
+    socket.on('room:create', (playerName, difficulty) => {
       const roomCode = generateRoomCode();
       const playerId = uuidv4();
       const seed = generateSeed();
+      const roomDifficulty = parseDifficulty(difficulty);
 
       const room = {
         id: uuidv4(),
@@ -141,7 +154,8 @@ app.prepare().then(() => {
         createdAt: Date.now(),
         hostId: playerId,
         seed,
-        obstacleSequence: generateObstacleSequence(seed),
+        difficulty: roomDifficulty,
+        obstacleSequence: generateObstacleSequence(seed, roomDifficulty),
         coinSequence: generateCoinSequence(seed),
       };
 
@@ -149,7 +163,7 @@ app.prepare().then(() => {
       playerToRoom.set(socket.id, roomCode);
       socket.join(roomCode);
 
-      console.log(`[Room] Created room ${roomCode} by ${playerName}`);
+      console.log(`[Room] Created room ${roomCode} by ${playerName} (${roomDifficulty})`);
       socket.emit('room:created', room);
       socket.emit('room:joined', room, playerId);
     });

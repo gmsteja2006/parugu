@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const playerName = (body.playerName || 'Player 1').toString().trim().slice(0, 16);
 
-    const { room, playerId } = createNewRoom(playerName);
+    const { room, playerId } = createNewRoom(playerName, body.difficulty);
 
     return NextResponse.json({
       success: true,

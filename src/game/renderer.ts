@@ -92,13 +92,22 @@ function generateBuildings() {
   buildingsGenerated = true;
 }
 
-// Perspective projection
+// True perspective projection: scale falls as 1/z, so obstacles glide in
+// smoothly from the horizon instead of crawling then rushing suddenly.
+const CAM_DEPTH = 320;
 function project3D(laneX: number, z: number): { x: number; y: number; scale: number } {
-  const t = Math.max(0, Math.min(1, z / MAX_Z));
-  const k = 1 - t * 0.88;
-  const x = VANISH_X + (laneX - VANISH_X) * k;
-  const y = VANISH_Y + (GROUND_Y - VANISH_Y) * k;
-  return { x, y, scale: Math.max(0.02, k) };
+  const depth = Math.max(0, z);
+  const s = CAM_DEPTH / (CAM_DEPTH + depth);
+  const x = VANISH_X + (laneX - VANISH_X) * s;
+  const y = VANISH_Y + (GROUND_Y - VANISH_Y) * s;
+  return { x, y, scale: Math.max(0.02, s) };
+}
+
+// Constant-TIME fade-in: the fade covers ~0.5s of travel at any speed,
+// so fast runs don't get a sudden pop-in either.
+function emergenceFade(z: number, speed: number): number {
+  const zone = Math.max(60, speed * 30);
+  return Math.max(0, Math.min(1, (MAX_Z - z) / zone));
 }
 
 export class GameRenderer {
@@ -218,13 +227,13 @@ export class GameRenderer {
     // Coins far -> near
     const sortedCoins = [...state.coins].sort((a, b) => b.z - a.z);
     for (const coin of sortedCoins) {
-      if (!coin.collected) this.drawCoin(coin);
+      if (!coin.collected) this.drawCoin(coin, state.speed);
     }
 
     // Obstacles far -> near
     const sortedObstacles = [...state.obstacles].sort((a, b) => b.z - a.z);
     for (const ob of sortedObstacles) {
-      this.drawObstacle(ob, state.distance);
+      this.drawObstacle(ob, state.distance, state.speed);
     }
 
     // Ghost players
@@ -1045,15 +1054,15 @@ export class GameRenderer {
 
   // ================= OBSTACLES =================
 
-  private drawObstacle(obstacle: Obstacle, distance: number) {
+  private drawObstacle(obstacle: Obstacle, distance: number, speed: number) {
     if (obstacle.z < -60 || obstacle.z > MAX_Z) return;
     const ctx = this.ctx;
     const laneX = getLaneX(obstacle.lane);
     const proj = project3D(laneX, obstacle.z);
     if (proj.scale <= 0.05) return;
 
-    // Smooth emergence: fade in from the horizon instead of popping
-    const fadeIn = obstacle.z > 600 ? Math.max(0, 1 - (obstacle.z - 600) / 200) : 1;
+    // Smooth emergence: constant-time fade from the horizon, no popping
+    const fadeIn = emergenceFade(obstacle.z, speed);
     if (fadeIn <= 0.01) return;
 
     const w = obstacle.width * proj.scale;
@@ -1609,12 +1618,16 @@ export class GameRenderer {
     ctx.fillRect(x, y + h * 0.72, w, 1);
   }
 
-  private drawCoin(coin: Coin) {
+  private drawCoin(coin: Coin, speed: number) {
     if (coin.z < -60 || coin.z > MAX_Z) return;
     const ctx = this.ctx;
     const laneX = getLaneX(coin.lane);
     const proj = project3D(laneX, coin.z);
     if (proj.scale <= 0.06) return;
+    const fadeIn = emergenceFade(coin.z, speed);
+    if (fadeIn <= 0.01) return;
+    ctx.save();
+    ctx.globalAlpha = fadeIn;
     const s = proj.scale;
     const baseR = Math.max(1.5, 9 * s);
     const floatY = Math.sin(this.frameCount * 0.09 + coin.floatOffset) * 6 * s;
@@ -1666,6 +1679,7 @@ export class GameRenderer {
       ctx.fillText('$', 0, 1);
       ctx.restore();
     }
+    ctx.restore();
   }
 
   // ================= SPEED FX =================
