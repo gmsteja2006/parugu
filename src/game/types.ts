@@ -96,6 +96,7 @@ export interface PlayerData {
   score: number;
   distance: number;
   coins: number;
+  scoreBonus: number;
   color: string;
   slideTimer: number;
   isAlive: boolean;

@@ -8,7 +8,7 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { GameEngine, generateObstacleSequence, generateCoinSequence, createPlayer } from '@/game/engine';
 import { GameRenderer } from '@/game/renderer';
 import { CANVAS_WIDTH, CANVAS_HEIGHT, type RoomPlayer, type PlayerUpdateData, type Difficulty, PLAYER_COLORS } from '@/game/types';
-import { playJumpSound, playSlideSound, playCoinSound, playCrashSound } from '@/game/sounds';
+import { playJumpSound, playSlideSound, playCoinSound, playCrashSound, playWhoosh, playLand } from '@/game/sounds';
 
 interface GameCanvasProps {
   playerId: string;
@@ -74,6 +74,17 @@ export default function GameCanvas({
 
     engine.onCollectCoin = () => {
       playCoinSound();
+      rendererRef.current?.addFloater('+10', '#e8a90c');
+    };
+
+    engine.onNearMiss = () => {
+      playWhoosh();
+      rendererRef.current?.addFloater('CLOSE! +25', '#2f9e00');
+    };
+
+    engine.onLand = () => {
+      playLand();
+      rendererRef.current?.notifyLand();
     };
 
     engineRef.current = engine;

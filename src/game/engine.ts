@@ -53,6 +53,7 @@ export function createPlayer(id: string, name: string, color: string): PlayerDat
     score: 0,
     distance: 0,
     coins: 0,
+    scoreBonus: 0,
     color,
     slideTimer: 0,
     isAlive: true,
@@ -166,6 +167,8 @@ export class GameEngine {
   onScoreChange?: (score: number, distance: number, coins: number, speed: number) => void;
   onGameOver?: () => void;
   onCollectCoin?: () => void;
+  onNearMiss?: () => void;
+  onLand?: () => void;
 
   constructor(player: PlayerData, obstacleSequence: ObstacleSpawn[], coinSequence: CoinSpawn[], difficulty: Difficulty = 'medium') {
     this.state = createGameState(player, difficulty);
@@ -224,8 +227,8 @@ export class GameEngine {
     this.state.distance += this.state.speed * deltaTime;
     player.distance = this.state.distance;
 
-    // Update score (distance-based + coins)
-    player.score = Math.floor(this.state.distance / 10) + player.coins * 10;
+    // Update score (distance-based + coins + stunt bonuses)
+    player.score = Math.floor(this.state.distance / 10) + player.coins * 10 + player.scoreBonus;
 
     // Gravity & jumping
     if (player.state === 'jumping') {
@@ -236,6 +239,7 @@ export class GameEngine {
         player.y = GROUND_Y - PLAYER_HEIGHT;
         player.velocityY = 0;
         player.state = 'running';
+        this.onLand?.();
       }
     }
 
@@ -323,8 +327,17 @@ export class GameEngine {
   }
 
   private updateObstacles(deltaTime: number) {
+    const player = this.state.player;
     for (const obstacle of this.state.obstacles) {
       obstacle.z -= (this.state.speed + (obstacle.approach ?? 0)) * deltaTime;
+      // Slipped past in the player's own lane = near miss stunt bonus
+      if (!obstacle.passed && obstacle.z < -20) {
+        obstacle.passed = true;
+        if (obstacle.lane === player.lane && player.isAlive) {
+          player.scoreBonus += 25;
+          this.onNearMiss?.();
+        }
+      }
     }
     // Remove obstacles that are behind the player
     this.state.obstacles = this.state.obstacles.filter(o => o.z > -200);
@@ -362,6 +375,8 @@ export class GameEngine {
           // If sliding under tall_barrier, skip collision
           if (obstacleDef.canSlideUnder && player.state === 'sliding') {
             obstacle.passed = true;
+            player.scoreBonus += 25;
+            this.onNearMiss?.();
             continue;
           }
 
@@ -370,6 +385,8 @@ export class GameEngine {
             const playerBottom = playerTop + playerHeight;
             if (playerBottom < obstacleTop + 15) {
               obstacle.passed = true;
+              player.scoreBonus += 25;
+              this.onNearMiss?.();
               continue;
             }
           }

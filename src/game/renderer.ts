@@ -53,6 +53,23 @@ interface CloudDef {
   speed: number;
 }
 
+interface BirdDef {
+  x: number;
+  y: number;
+  speed: number;
+  phase: number;
+  scale: number;
+}
+
+interface Floater {
+  x: number;
+  y: number;
+  vy: number;
+  life: number;
+  text: string;
+  color: string;
+}
+
 interface SkylineBlock {
   w: number;
   h: number;
@@ -115,8 +132,12 @@ export class GameRenderer {
   private frameCount: number = 0;
   private particles: Particle[] = [];
   private clouds: CloudDef[] = [];
+  private birds: BirdDef[] = [];
+  private floaters: Floater[] = [];
   private skyline: SkylineBlock[] = [];
   private smoothX: number = VANISH_X;
+  private camX: number = 0;
+  private dip: number = 0;
   private ghostX: Map<string, number> = new Map();
   private lastCoins: number = 0;
   private wasAlive: boolean = true;
@@ -127,6 +148,7 @@ export class GameRenderer {
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
     this.initClouds();
+    this.initBirds();
     this.initSkyline();
     generateBuildings();
     this.smoothX = getLaneX(1);
@@ -151,6 +173,37 @@ export class GameRenderer {
         gap: 4 + Math.random() * 14,
       });
     }
+  }
+
+  private initBirds() {
+    for (let i = 0; i < 4; i++) {
+      this.birds.push({
+        x: Math.random() * CANVAS_WIDTH,
+        y: 50 + Math.random() * 90,
+        speed: 0.4 + Math.random() * 0.5,
+        phase: Math.random() * Math.PI * 2,
+        scale: 0.7 + Math.random() * 0.6,
+      });
+    }
+  }
+
+  /** Floating score popup, e.g. coin +10 or near-miss stunt */
+  addFloater(text: string, color: string) {
+    this.floaters.push({
+      x: this.smoothX + (Math.random() - 0.5) * 50,
+      y: GROUND_Y - 135,
+      vy: -1.1,
+      life: 1,
+      text,
+      color,
+    });
+    if (this.floaters.length > 12) this.floaters.shift();
+  }
+
+  /** Landing thump feedback: dust burst + camera dip */
+  notifyLand() {
+    this.dip = -5;
+    this.burst(this.smoothX, GROUND_Y - 4, '#c9b696', 7, 'dust');
   }
 
   render(state: GameState, otherPlayers: RoomPlayer[] = []) {
@@ -182,6 +235,11 @@ export class GameRenderer {
     const targetX = getLaneX(state.player.lane);
     this.smoothX += (targetX - this.smoothX) * 0.22;
 
+    // Camera drifts toward the player's lane + landing dip spring
+    const camTarget = (this.smoothX - VANISH_X) * 0.3;
+    this.camX += (camTarget - this.camX) * 0.08;
+    this.dip *= 0.88;
+
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // Camera: micro shake grows with speed + trauma shake on crash
@@ -192,7 +250,7 @@ export class GameRenderer {
     const shY = (Math.random() - 0.5) * (shakeBase * 0.7 + shakeTrauma);
 
     ctx.save();
-    ctx.translate(shX, shY);
+    ctx.translate(shX - this.camX, shY + this.dip);
 
     // Slight speed zoom (FOV kick)
     const zoom = 1 + speedNorm * 0.025;
@@ -203,11 +261,16 @@ export class GameRenderer {
     this.drawSky(state.distance);
     this.drawSun();
     this.drawClouds(state.distance, speedNorm);
+    this.drawBirds(speedNorm);
     this.drawSkyline(state.distance);
     this.drawSideBuildings(state.distance, speedNorm);
     this.drawTracks(state.distance, state.speed, speedNorm);
+    this.drawCloudShadows();
+    this.drawGrassTufts(state.distance);
+    this.drawCatenary(state.distance);
     const danger = state.obstacles.some((o) => o.z < 350 && o.z > -20);
     this.drawTrackside(state.distance, danger);
+    this.drawProps(state.distance, state.speed);
     this.drawWarnings(state.obstacles);
 
     // Coins far -> near
@@ -235,6 +298,7 @@ export class GameRenderer {
     }
 
     this.updateAndDrawParticles();
+    this.updateAndDrawFloaters();
     this.drawGroundStreaks(state.speed, speedNorm);
     this.drawSpeedLines(state.speed, speedNorm);
 
@@ -328,6 +392,40 @@ export class GameRenderer {
       ctx.fillStyle = 'rgba(170,200,225,0.5)';
       ctx.beginPath();
       ctx.ellipse(c.x, c.y + 10, c.w / 2.6, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawBirds(speedNorm: number) {
+    const ctx = this.ctx;
+    ctx.strokeStyle = 'rgba(50,70,90,0.8)';
+    ctx.lineCap = 'round';
+    for (const b of this.birds) {
+      b.x -= b.speed + speedNorm * 0.5;
+      if (b.x < -30) {
+        b.x = CANVAS_WIDTH + 30;
+        b.y = 40 + Math.random() * 100;
+      }
+      const flap = Math.sin(this.frameCount * 0.35 + b.phase) * 4 * b.scale;
+      const w = 9 * b.scale;
+      ctx.lineWidth = Math.max(1, 2 * b.scale);
+      // Classic gull silhouette, wings beating
+      ctx.beginPath();
+      ctx.moveTo(b.x - w, b.y - flap);
+      ctx.quadraticCurveTo(b.x - w * 0.4, b.y + 1.5, b.x, b.y);
+      ctx.quadraticCurveTo(b.x + w * 0.4, b.y + 1.5, b.x + w, b.y - flap);
+      ctx.stroke();
+    }
+  }
+
+  // Soft shadows of the clouds drifting across the ground
+  private drawCloudShadows() {
+    const ctx = this.ctx;
+    for (let i = 0; i < Math.min(3, this.clouds.length); i++) {
+      const c = this.clouds[i];
+      ctx.fillStyle = 'rgba(45,75,55,0.20)';
+      ctx.beginPath();
+      ctx.ellipse(c.x, GROUND_Y + 80, c.w * 0.75, 22, 0, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -442,15 +540,17 @@ export class GameRenderer {
       ctx.fillRect(gx, y, sz, sz);
     }
 
-    // Wooden sleepers scrolling toward the camera (main speed cue)
+    // Wooden sleepers scrolling toward the camera (main speed cue,
+    // stretched with motion blur as speed rises)
     const tieN = 15;
     for (let i = 0; i < tieN; i++) {
       const tt = ((i / tieN) + flow) % 1;
       const t = tt * tt;
       const y = VANISH_Y + (GROUND_Y - VANISH_Y) * t;
       const halfW = (balHalfBottom * t + balHalfTop * (1 - t)) * 0.94;
+      const blurH = Math.max(1, 5 * t * (1 + speedNorm * 1.3));
       ctx.fillStyle = '#5d4a33';
-      ctx.fillRect(VANISH_X - halfW, y, halfW * 2, Math.max(1, 5 * t));
+      ctx.fillRect(VANISH_X - halfW, y, halfW * 2, blurH);
       ctx.fillStyle = 'rgba(255,240,220,0.18)';
       ctx.fillRect(VANISH_X - halfW, y, halfW * 2, Math.max(1, 1.5 * t));
     }
@@ -474,6 +574,46 @@ export class GameRenderer {
         ctx.beginPath();
         ctx.moveTo(xTop, VANISH_Y);
         ctx.lineTo(xBot, GROUND_Y + 2);
+        ctx.stroke();
+      }
+      // Oil/dirt streak worn down each lane center
+      const stain = ctx.createLinearGradient(0, VANISH_Y, 0, GROUND_Y);
+      stain.addColorStop(0, 'rgba(35,30,25,0)');
+      stain.addColorStop(1, 'rgba(35,30,25,0.22)');
+      ctx.fillStyle = stain;
+      ctx.beginPath();
+      ctx.moveTo(VANISH_X + (cx - VANISH_X) * 0.12 - 3, VANISH_Y);
+      ctx.lineTo(cx - 11, GROUND_Y);
+      ctx.lineTo(cx + 11, GROUND_Y);
+      ctx.lineTo(VANISH_X + (cx - VANISH_X) * 0.12 + 3, VANISH_Y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+
+  // Grass tufts rushing past on both verges
+  private drawGrassTufts(distance: number) {
+    const ctx = this.ctx;
+    const balHalfBottom = LANE_WIDTH * 2.5;
+    const flow = (distance * 0.004) % 1;
+    const n = 30;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const tt = ((i / n) + flow * 1.0) % 1;
+      const t = tt * tt;
+      if (t < 0.04) continue;
+      const y = VANISH_Y + (GROUND_Y + 120 - VANISH_Y) * t;
+      const halfW = balHalfBottom * t + 30 * (1 - t);
+      const side = i % 2 === 0 ? -1 : 1;
+      const lat = halfW * (1.15 + ((i * 53) % 40) / 100);
+      const x = VANISH_X + side * lat;
+      const hgt = Math.max(1.5, 9 * t);
+      ctx.strokeStyle = i % 3 === 0 ? '#8cc168' : '#3f7030';
+      ctx.lineWidth = Math.max(1, 2.2 * t);
+      for (const lean of [-0.35, 0, 0.35]) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + lean * hgt, y - hgt);
         ctx.stroke();
       }
     }
@@ -567,6 +707,185 @@ export class GameRenderer {
         ctx.lineTo(gxBot, GROUND_Y - 60 * hf - 4);
         ctx.stroke();
       }
+    }
+  }
+
+  // Overhead catenary wires + support portals (railway signature)
+  private drawCatenary(distance: number) {
+    const ctx = this.ctx;
+    // Two contact wires running the length of the line
+    for (const gx of [VANISH_X - 70, VANISH_X + 70]) {
+      const far = project3D(gx, MAX_Z);
+      const wireTop = 165;
+      ctx.strokeStyle = 'rgba(40,42,48,0.85)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(far.x, far.y - wireTop * far.scale);
+      ctx.lineTo(gx, GROUND_Y - wireTop);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(far.x, far.y - wireTop * far.scale);
+      ctx.lineTo(gx, GROUND_Y - wireTop);
+      ctx.stroke();
+    }
+    // Support portals rushing past
+    const spacing = 640;
+    const count = 4;
+    const baseIndex = Math.floor(distance / spacing);
+    for (let k = 0; k < count; k++) {
+      const worldD = (baseIndex + k) * spacing;
+      const z = worldD - distance + 60;
+      if (z < 40 || z > MAX_Z) continue;
+      const s = project3D(VANISH_X, z).scale;
+      if (s < 0.12) continue;
+      const mastL = project3D(VANISH_X - LANE_WIDTH * 2.5, z);
+      const mastR = project3D(VANISH_X + LANE_WIDTH * 2.5, z);
+      const topH = 165 * s;
+      ctx.fillStyle = '#4e5257';
+      ctx.fillRect(mastL.x - 3 * s, mastL.y - topH, 6 * s, topH);
+      ctx.fillRect(mastR.x - 3 * s, mastR.y - topH, 6 * s, topH);
+      // Cross beam with slight sag
+      ctx.strokeStyle = '#3c4046';
+      ctx.lineWidth = Math.max(1.5, 5 * s);
+      ctx.beginPath();
+      ctx.moveTo(mastL.x, mastL.y - topH);
+      ctx.quadraticCurveTo(VANISH_X, mastL.y - topH + 8 * s, mastR.x, mastR.y - topH);
+      ctx.stroke();
+      // Droppers down to the wires
+      ctx.strokeStyle = 'rgba(40,42,48,0.9)';
+      ctx.lineWidth = Math.max(1, 1.8 * s);
+      for (const gx of [VANISH_X - 70, VANISH_X + 70]) {
+        const wx = VANISH_X + (gx - VANISH_X) * s;
+        const wy = mastL.y - topH + 8 * s;
+        ctx.beginPath();
+        ctx.moveTo(wx, wy);
+        ctx.lineTo(wx, wy + 22 * s);
+        ctx.stroke();
+        ctx.fillStyle = '#2c2e33';
+        ctx.beginPath();
+        ctx.arc(wx, wy + 2 * s, Math.max(1, 2.5 * s), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Scrolling trackside props: crates, barrels, bushes, signboards
+  private drawProps(distance: number, speed: number) {
+    const ctx = this.ctx;
+    const spacing = 260;
+    const count = 8;
+    const kinds = ['crate', 'barrel', 'bush', 'sign'] as const;
+    const baseIndex = Math.floor(distance / spacing);
+    for (let k = 0; k < count; k++) {
+      const worldD = (baseIndex + k) * spacing + ((k * 137) % 120);
+      const z = worldD - distance + 60;
+      if (z < 0 || z > MAX_Z) continue;
+      const fade = emergenceFade(z, speed);
+      if (fade <= 0.05) continue;
+      const side = k % 2 === 0 ? -1 : 1;
+      const groundX = VANISH_X + side * LANE_WIDTH * 3.6;
+      const proj = project3D(groundX, z);
+      const s = proj.scale;
+      if (s < 0.12) continue;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      const kind = kinds[Math.abs(k) % kinds.length];
+      if (kind === 'crate') this.drawCrate(proj.x, proj.y, s, k);
+      else if (kind === 'barrel') this.drawBarrel(proj.x, proj.y, s, k);
+      else if (kind === 'bush') this.drawBush(proj.x, proj.y, s, k);
+      else this.drawSignboard(proj.x, proj.y, s, k);
+      ctx.restore();
+    }
+  }
+
+  private drawCrate(x: number, y: number, s: number, k: number) {
+    const ctx = this.ctx;
+    const w = 30 * s;
+    const h = 26 * s;
+    ctx.fillStyle = 'rgba(20,20,25,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2 * s, w * 0.6, 4 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#8a6a42';
+    ctx.fillRect(x - w / 2, y - h, w, h);
+    ctx.fillStyle = '#a37f4f';
+    ctx.fillRect(x - w / 2, y - h, w * 0.35, h);
+    ctx.strokeStyle = '#5d472a';
+    ctx.lineWidth = Math.max(1, 1.8 * s);
+    ctx.strokeRect(x - w / 2, y - h, w, h);
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, y - h);
+    ctx.lineTo(x + w / 2, y);
+    ctx.moveTo(x + w / 2, y - h);
+    ctx.lineTo(x - w / 2, y);
+    ctx.stroke();
+  }
+
+  private drawBarrel(x: number, y: number, s: number, k: number) {
+    const ctx = this.ctx;
+    const w = 20 * s;
+    const h = 30 * s;
+    const cols = ['#b33a2c', '#2c5fa3', '#3d7a3d'];
+    const c = cols[Math.abs(k) % cols.length];
+    ctx.fillStyle = 'rgba(20,20,25,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 2 * s, w * 0.6, 4 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const g = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0);
+    g.addColorStop(0, this.shade(c, 0.6));
+    g.addColorStop(0.5, c);
+    g.addColorStop(1, this.shade(c, 0.55));
+    ctx.fillStyle = g;
+    this.roundRect(x - w / 2, y - h, w, h, 3 * s);
+    ctx.fillStyle = 'rgba(240,240,245,0.85)';
+    ctx.fillRect(x - w / 2, y - h * 0.62, w, Math.max(1, 3 * s));
+    ctx.fillRect(x - w / 2, y - h * 0.3, w, Math.max(1, 3 * s));
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillRect(x - w * 0.3, y - h + 2 * s, w * 0.16, h - 4 * s);
+  }
+
+  private drawBush(x: number, y: number, s: number, k: number) {
+    const ctx = this.ctx;
+    const r = 14 * s;
+    ctx.fillStyle = 'rgba(20,20,25,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 1.5 * s, r * 1.4, 3.5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const blobs: Array<[number, number, number, string]> = [
+      [0, 0, 1, '#3f7030'],
+      [-0.8, -0.25, 0.75, '#4d8540'],
+      [0.8, -0.2, 0.7, '#356228'],
+      [0.1, -0.6, 0.6, '#5d9a4c'],
+    ];
+    for (const [ox, oy, rr, col] of blobs) {
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.arc(x + ox * r, y - r * 0.7 + oy * r, r * rr, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawSignboard(x: number, y: number, s: number, k: number) {
+    const ctx = this.ctx;
+    const postH = 46 * s;
+    ctx.fillStyle = '#5b6067';
+    ctx.fillRect(x - 2 * s, y - postH, 4 * s, postH);
+    const bw = 64 * s;
+    const bh = 22 * s;
+    const bx = x - bw / 2;
+    const by = y - postH - bh;
+    ctx.fillStyle = '#22252a';
+    this.roundRect(bx - 1.5, by - 1.5, bw + 3, bh + 3, 3 * s);
+    ctx.fillStyle = k % 3 === 0 ? '#1d4f9e' : '#20603a';
+    this.roundRect(bx, by, bw, bh, 2.5 * s);
+    if (s > 0.4) {
+      ctx.fillStyle = '#fff';
+      ctx.font = `800 ${Math.max(6, 10 * s)}px Inter, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(k % 3 === 0 ? '◀ SUBWAY' : 'CITY ▶', x, by + bh / 2 + 0.5);
     }
   }
 
@@ -1324,6 +1643,54 @@ export class GameRenderer {
     this.roundRect(x - 2 * s, y + h - Math.max(2, 7 * s), w + 4 * s, Math.max(2, 7 * s), 2);
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.fillRect(x - 2 * s, y + h - Math.max(2, 7 * s), w + 4 * s, 1);
+
+    // Grime kicking up the lower panels
+    const grime = ctx.createLinearGradient(0, y + h * 0.7, 0, y + h);
+    grime.addColorStop(0, 'rgba(25,20,15,0)');
+    grime.addColorStop(1, 'rgba(25,20,15,0.4)');
+    ctx.fillStyle = grime;
+    ctx.fillRect(x, y + h * 0.7, w, h * 0.3);
+
+    // Graffiti tag scrawled on the nose
+    if (s > 0.5) {
+      const tags = ['ZOOM', 'RAILZ', 'VOLT', 'DASH'];
+      const tagCols = ['#ff2d78', '#00e5ff', '#b6ff2e', '#ffea00'];
+      const tag = tags[Math.abs(hash) % tags.length];
+      ctx.save();
+      ctx.translate(x + w / 2, y + h * 0.66);
+      ctx.rotate(-0.07);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = tagCols[Math.abs(hash >> 3) % tagCols.length];
+      ctx.font = `italic 900 ${Math.max(7, 12 * s)}px Inter, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tag, 0, 0);
+      ctx.restore();
+    }
+
+    // Undercarriage: skirt, bogies, wheels on the rails
+    if (s > 0.4) {
+      ctx.fillStyle = '#17181d';
+      ctx.fillRect(x + w * 0.06, y + h - Math.max(2, 6 * s), w * 0.88, Math.max(2, 6 * s));
+      for (const bx of [0.2, 0.68]) {
+        const bogX = x + w * bx;
+        const bogY = y + h - Math.max(1, 3 * s);
+        ctx.fillStyle = '#23252b';
+        this.roundRect(bogX, bogY, w * 0.16, Math.max(2, 7 * s), 2 * s);
+        ctx.fillStyle = '#0e0f12';
+        for (const wx of [0.02, 0.1]) {
+          ctx.beginPath();
+          ctx.arc(bogX + w * wx, bogY + Math.max(2, 7 * s), Math.max(1.5, 4.5 * s), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.fillStyle = '#3a3e45';
+        for (const wx of [0.02, 0.1]) {
+          ctx.beginPath();
+          ctx.arc(bogX + w * wx, bogY + Math.max(2, 7 * s), Math.max(0.8, 1.8 * s), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
   }
 
   // Lighten (>1) or darken (<1) a hex color
@@ -1784,6 +2151,28 @@ export class GameRenderer {
         color: kind === 'crash' && Math.random() < 0.4 ? '#ffd34d' : color,
         kind,
       });
+    }
+  }
+
+  private updateAndDrawFloaters() {
+    const ctx = this.ctx;
+    this.floaters = this.floaters.filter((f) => f.life > 0);
+    for (const f of this.floaters) {
+      f.y += f.vy;
+      f.vy *= 0.97;
+      f.life -= 0.022;
+      if (f.life <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, f.life * 1.6);
+      ctx.font = 'italic 900 17px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(15,15,20,0.85)';
+      ctx.strokeText(f.text, f.x, f.y);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.restore();
     }
   }
 
