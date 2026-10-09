@@ -24,7 +24,7 @@ export default function GameOver({ rankings, currentPlayerId, onPlayAgain, onLea
         <div className="bg-gradient-to-b from-white/10 to-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl shadow-purple-900/30">
           {/* Header */}
           <div className="text-center mb-6">
-            <h2 className="text-4xl font-black mb-2">
+            <h2 className="font-playful text-4xl font-black mb-2 drop-shadow-[0_3px_0_rgba(0,0,0,0.45)]">
               <span className="bg-gradient-to-r from-red-400 via-orange-400 to-yellow-400 bg-clip-text text-transparent">
                 GAME OVER
               </span>
@@ -93,10 +93,9 @@ export default function GameOver({ rankings, currentPlayerId, onPlayAgain, onLea
           <div className="space-y-3">
             <button
               onClick={onPlayAgain}
-              className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300"
+              className="btn-chunky w-full"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600" />
-              <span className="relative flex items-center justify-center gap-2">
+              <span className="flex items-center justify-center gap-2">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>

@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getSocket, disconnectSocket } from '@/lib/socket';
-import { generateObstacleSequence, generateCoinSequence } from '@/game/engine';
+import { generateObstacleSequence, generateCoinSequence, generatePickupSequence } from '@/game/engine';
 import { type Room, type RoomPlayer, type PlayerUpdateData, type Difficulty, DIFFICULTY_CONFIG, PLAYER_COLORS } from '@/game/types';
 import StartScreen from './StartScreen';
 import Lobby from './Lobby';
@@ -16,6 +16,7 @@ import Scoreboard from './Scoreboard';
 import GameOver from './GameOver';
 import CountdownOverlay from './CountdownOverlay';
 import { playCountdownBeep } from '@/game/sounds';
+import { startMusic, stopMusic } from '@/game/music';
 
 type GamePhase = 'start' | 'lobby' | 'countdown' | 'playing' | 'gameover';
 
@@ -32,6 +33,15 @@ export default function GameView() {
   const [currentDistance, setCurrentDistance] = useState(0);
   const [currentCoins, setCurrentCoins] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(5);
+  const [currentMagnet, setCurrentMagnet] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const [muted, setMuted] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('nr_muted') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [gameStarted, setGameStarted] = useState(false);
   const [isServerlessMode, setIsServerlessMode] = useState(false);
@@ -43,6 +53,41 @@ export default function GameView() {
     roomRef.current = room;
     playerIdRef.current = playerId;
   }, [room, playerId]);
+
+  // Music: on during countdown + playing, off everywhere else / muted
+  useEffect(() => {
+    if (!muted && (phase === 'countdown' || phase === 'playing')) {
+      startMusic();
+    } else {
+      stopMusic();
+    }
+  }, [muted, phase]);
+
+  useEffect(() => () => stopMusic(), []);
+
+  // ESC / P pauses while playing
+  useEffect(() => {
+    if (phase !== 'playing') return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+        setPaused((p) => !p);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [phase]);
+
+  const toggleMute = useCallback(() => {
+    setMuted((m) => {
+      const next = !m;
+      try {
+        localStorage.setItem('nr_muted', next ? '1' : '0');
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
 
   // ==========================================
   // Socket.IO Listeners
@@ -279,6 +324,7 @@ export default function GameView() {
       difficulty,
       obstacleSequence: generateObstacleSequence(seed, difficulty),
       coinSequence: generateCoinSequence(seed),
+      pickupSequence: generatePickupSequence(seed),
     };
 
     setRoom(soloRoom);
@@ -428,10 +474,12 @@ export default function GameView() {
     setPlayerId('');
     setOtherPlayers([]);
     setGameStarted(false);
+    setPaused(false);
     setCurrentScore(0);
     setCurrentDistance(0);
     setCurrentCoins(0);
     setCurrentSpeed(5);
+    setCurrentMagnet(0);
   }, [isServerlessMode, room, playerId]);
 
   // In-Game Update
@@ -488,11 +536,12 @@ export default function GameView() {
   }, [isServerlessMode, room, playerId]);
 
   // Score HUD change
-  const handleScoreChange = useCallback((score: number, distance: number, coins: number, speed: number) => {
+  const handleScoreChange = useCallback((score: number, distance: number, coins: number, speed: number, magnet: number) => {
     setCurrentScore(score);
     setCurrentDistance(distance);
     setCurrentCoins(coins);
     setCurrentSpeed(speed);
+    setCurrentMagnet(magnet);
   }, []);
 
   // Play Again
@@ -504,11 +553,13 @@ export default function GameView() {
 
     setPhase('lobby');
     setGameStarted(false);
+    setPaused(false);
     setOtherPlayers([]);
     setCurrentScore(0);
     setCurrentDistance(0);
     setCurrentCoins(0);
     setCurrentSpeed(5);
+    setCurrentMagnet(0);
 
     setRoom(prev => {
       if (!prev) return prev;
@@ -569,6 +620,22 @@ export default function GameView() {
             </div>
             <div className="flex items-center gap-2 text-[11px] font-mono">
               <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 tracking-[0.25em] text-cyan-200">{room.code}</span>
+              {phase === 'playing' && (
+                <button
+                  onClick={() => setPaused((p) => !p)}
+                  title={paused ? 'Resume (ESC)' : 'Pause (ESC)'}
+                  className="btn-chunky-sm"
+                >
+                  {paused ? '▶' : '⏸'}
+                </button>
+              )}
+              <button
+                onClick={toggleMute}
+                title={muted ? 'Unmute music' : 'Mute music'}
+                className="btn-chunky-sm"
+              >
+                {muted ? '🔇' : '🎵'}
+              </button>
               <button onClick={handleLeave} className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-white/50 hover:text-red-300 hover:border-red-400/30 transition text-[11px] font-sans font-semibold">
                 ✕ quit
               </button>
@@ -583,6 +650,7 @@ export default function GameView() {
               currentDistance={currentDistance}
               currentCoins={currentCoins}
               currentSpeed={currentSpeed}
+              magnet={currentMagnet}
               difficulty={room.difficulty ?? difficulty}
             />
             <div className="pt-[92px]">
@@ -597,6 +665,7 @@ export default function GameView() {
                 onDied={handleGameDied}
                 onScoreChange={handleScoreChange}
                 isStarted={gameStarted}
+                paused={paused}
               />
             </div>
           </div>
@@ -611,6 +680,21 @@ export default function GameView() {
 
           {phase === 'countdown' && (
             <CountdownOverlay count={countdown} />
+          )}
+
+          {paused && phase === 'playing' && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-[3px] animate-fadeIn">
+              <div className="text-center">
+                <p className="font-playful text-7xl font-black italic text-white drop-shadow-[0_4px_0_rgba(0,0,0,0.45)]">
+                  PAUSED
+                </p>
+                <p className="mt-2 text-white/50 text-sm">Take a breath, runner</p>
+                <button onClick={() => setPaused(false)} className="btn-chunky-green mt-5">
+                  ▶ RESUME
+                </button>
+                <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.3em] text-white/30">or press ESC</p>
+              </div>
+            </div>
           )}
         </div>
       )}

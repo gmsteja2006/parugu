@@ -164,16 +164,9 @@ export default function Lobby({ room, playerId, onReady, onLeave }: LobbyProps) 
           <button
             onClick={onReady}
             disabled={isReady}
-            className={`w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 ${
-              isReady ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
+            className={`btn-chunky-green w-full ${isReady ? 'opacity-70 cursor-not-allowed' : ''}`}
           >
-            <div className={`absolute inset-0 ${
-              isReady
-                ? 'bg-green-600'
-                : 'bg-gradient-to-r from-green-500 to-emerald-600'
-            }`} />
-            <span className="relative flex items-center justify-center gap-2">
+            <span className="flex items-center justify-center gap-2">
               {isReady ? (
                 <>
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

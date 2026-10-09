@@ -4,7 +4,7 @@
 
 import type { Room, RoomPlayer, Difficulty } from '@/game/types';
 import { PLAYER_COLORS, parseDifficulty } from '@/game/types';
-import { generateObstacleSequence, generateCoinSequence } from '@/game/engine';
+import { generateObstacleSequence, generateCoinSequence, generatePickupSequence } from '@/game/engine';
 
 interface GlobalWithStore {
   __ROOMS_STORE__?: Map<string, Room>;
@@ -59,6 +59,7 @@ export function createNewRoom(playerName: string, difficulty: Difficulty = 'medi
     difficulty: roomDifficulty,
     obstacleSequence: generateObstacleSequence(seed, roomDifficulty),
     coinSequence: generateCoinSequence(seed),
+    pickupSequence: generatePickupSequence(seed),
   };
 
   roomsStore.set(code, room);

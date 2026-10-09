@@ -105,6 +105,26 @@ function generateCoinSequence(seed, count = 1000) {
   return spawns;
 }
 
+// Mirrors generatePickupSequence in src/game/engine.ts (identical RNG!)
+function generatePickupSequence(seed, count = 150) {
+  const spawns = [];
+  let rng = seed + 5555;
+
+  function nextRandom() {
+    rng = (rng * 1103515245 + 12345) & 0x7fffffff;
+    return rng / 0x7fffffff;
+  }
+
+  let distance = 900;
+  for (let i = 0; i < count; i++) {
+    const lane = Math.floor(nextRandom() * 3);
+    const kind = nextRandom() < 0.55 ? 'spray' : 'magnet';
+    spawns.push({ id: `pickup_${i}`, kind, lane, distance });
+    distance += 700 + nextRandom() * 900;
+  }
+  return spawns;
+}
+
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => {
     const parsedUrl = parse(req.url, true);
@@ -159,6 +179,7 @@ app.prepare().then(() => {
         difficulty: roomDifficulty,
         obstacleSequence: generateObstacleSequence(seed, roomDifficulty),
         coinSequence: generateCoinSequence(seed),
+        pickupSequence: generatePickupSequence(seed),
       };
 
       rooms.set(roomCode, room);

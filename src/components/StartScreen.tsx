@@ -62,7 +62,7 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
 
       {/* Title */}
       <div className="relative z-10 mb-12 text-center">
-        <h1 className="text-6xl md:text-7xl font-black tracking-tight mb-2">
+        <h1 className="font-playful text-6xl md:text-7xl font-black tracking-tight mb-2 drop-shadow-[0_5px_0_rgba(0,0,0,0.45)]">
           <span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
             NEON
           </span>
@@ -141,11 +141,9 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
 
                 <button
                   onClick={() => onPlaySolo(playerName.trim() || 'Runner')}
-                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300"
+                  className="btn-chunky-green w-full animate-btn-bounce-in"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-teal-600 transition-opacity group-hover:opacity-90" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-400 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
-                  <span className="relative flex items-center justify-center gap-3 text-base">
+                  <span className="flex items-center justify-center gap-3 text-base">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -163,11 +161,9 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
                 <button
                   onClick={() => playerName.trim() ? setMode('create') : null}
                   disabled={!playerName.trim()}
-                  className="w-full group relative overflow-hidden rounded-xl px-6 py-3.5 font-semibold text-white transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="btn-chunky w-full disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600 transition-opacity group-hover:opacity-90" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
-                  <span className="relative flex items-center justify-center gap-3">
+                  <span className="flex items-center justify-center gap-3">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
@@ -178,11 +174,9 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
                 <button
                   onClick={() => playerName.trim() ? setMode('join') : null}
                   disabled={!playerName.trim()}
-                  className="w-full group relative overflow-hidden rounded-xl px-6 py-3.5 font-semibold text-white transition-all duration-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                  className="btn-chunky-pink w-full disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-600 transition-opacity group-hover:opacity-90" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity blur-xl" />
-                  <span className="relative flex items-center justify-center gap-3">
+                  <span className="flex items-center justify-center gap-3">
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
                     </svg>
@@ -210,10 +204,9 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
                 <button
                   onClick={handleCreate}
                   disabled={isConnecting}
-                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 disabled:opacity-50"
+                  className="btn-chunky w-full disabled:opacity-60"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-600" />
-                  <span className="relative flex items-center justify-center gap-2">
+                  <span className="flex items-center justify-center gap-2">
                     {isConnecting ? (
                       <>
                         <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">
@@ -263,10 +256,9 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
                 <button
                   onClick={handleJoin}
                   disabled={isConnecting || !roomCode.trim()}
-                  className="w-full group relative overflow-hidden rounded-xl px-6 py-4 font-semibold text-white transition-all duration-300 disabled:opacity-50"
+                  className="btn-chunky-pink w-full disabled:opacity-60"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-pink-600" />
-                  <span className="relative flex items-center justify-center gap-2">
+                  <span className="flex items-center justify-center gap-2">
                     {isConnecting ? (
                       <>
                         <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24">

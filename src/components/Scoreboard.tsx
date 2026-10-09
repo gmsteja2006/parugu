@@ -15,6 +15,7 @@ interface ScoreboardProps {
   currentDistance: number;
   currentCoins: number;
   currentSpeed?: number;
+  magnet?: number;
   difficulty?: Difficulty;
 }
 
@@ -25,6 +26,7 @@ export default function Scoreboard({
   currentDistance,
   currentCoins,
   currentSpeed = BASE_SPEED,
+  magnet = 0,
   difficulty = 'medium',
 }: ScoreboardProps) {
   const sortedPlayers = [...players].sort((a, b) => {
@@ -60,13 +62,25 @@ export default function Scoreboard({
                 <span className="ml-1 text-[10px] font-bold text-white/50">km/h</span>
               </p>
             </div>
-            {/* Score module */}
-            <div className="rounded-xl border border-white/12 bg-black/60 backdrop-blur-md px-3.5 py-2 shadow-lg min-w-[118px]">
+            {/* Score module — big playful counter */}
+            <div className="rounded-2xl border-[3px] border-white/90 bg-black/60 backdrop-blur-md px-3.5 py-2 shadow-[0_4px_0_rgba(0,0,0,0.45)] min-w-[118px]">
               <p className="text-[9px] uppercase tracking-[0.22em] font-bold text-white/45">score</p>
-              <p className="text-[26px] leading-none font-black text-white tabular-nums tracking-tight text-glow-cyan">
+              <p className="font-playful text-[30px] leading-none font-black text-white tabular-nums drop-shadow-[0_2px_0_rgba(0,0,0,0.5)]">
                 {currentScore.toLocaleString()}
               </p>
             </div>
+            {/* Magnet power-up slot */}
+            {magnet > 0 && (
+              <div className="relative overflow-hidden rounded-2xl border-[3px] border-pink-400 bg-pink-950/60 backdrop-blur-md px-3 py-2 shadow-[0_0_18px_rgba(255,45,120,0.55)] min-w-[86px] animate-pulse-glow">
+                <p className="text-[9px] uppercase tracking-[0.22em] font-black text-pink-200">🧲 magnet</p>
+                <p className="font-playful text-[22px] leading-none font-black text-white tabular-nums">
+                  {Math.ceil(magnet)}s
+                </p>
+                <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/15">
+                  <div className="h-full bg-gradient-to-r from-pink-400 to-amber-300" style={{ width: `${Math.min(100, (magnet / 8) * 100)}%` }} />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2">

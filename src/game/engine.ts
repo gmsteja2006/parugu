@@ -7,10 +7,12 @@ import {
   type PlayerData,
   type Obstacle,
   type Coin,
+  type Pickup,
   type Lane,
   type ObstacleType,
   type ObstacleSpawn,
   type CoinSpawn,
+  type PickupSpawn,
   type Difficulty,
   DIFFICULTY_CONFIG,
   LANE_COUNT,
@@ -54,6 +56,7 @@ export function createPlayer(id: string, name: string, color: string): PlayerDat
     distance: 0,
     coins: 0,
     scoreBonus: 0,
+    magnetTimer: 0,
     color,
     slideTimer: 0,
     isAlive: true,
@@ -66,8 +69,10 @@ export function createGameState(player: PlayerData, difficulty: Difficulty = 'me
     player,
     obstacles: [],
     coins: [],
+    pickups: [],
     speed: DIFFICULTY_CONFIG[difficulty].baseSpeed,
     distance: 0,
+    magnet: 0,
     isRunning: false,
     isPaused: false,
     gameOver: false,
@@ -153,6 +158,26 @@ export function generateCoinSequence(seed: number, count: number = 1000): CoinSp
   return spawns;
 }
 
+export function generatePickupSequence(seed: number, count: number = 150): PickupSpawn[] {
+  const spawns: PickupSpawn[] = [];
+  let rng = seed + 5555;
+
+  function nextRandom(): number {
+    rng = (rng * 1103515245 + 12345) & 0x7fffffff;
+    return rng / 0x7fffffff;
+  }
+
+  let distance = 900;
+  for (let i = 0; i < count; i++) {
+    const lane = Math.floor(nextRandom() * LANE_COUNT) as Lane;
+    const kind = nextRandom() < 0.55 ? 'spray' : 'magnet';
+    spawns.push({ id: `pickup_${i}`, kind, lane, distance });
+    distance += 700 + nextRandom() * 900;
+  }
+
+  return spawns;
+}
+
 // ============================================
 // Game update logic
 // ============================================
@@ -161,19 +186,24 @@ export class GameEngine {
   state: GameState;
   obstacleSequence: ObstacleSpawn[];
   coinSequence: CoinSpawn[];
+  pickupSequence: PickupSpawn[];
   nextObstacleIndex: number = 0;
   nextCoinIndex: number = 0;
+  nextPickupIndex: number = 0;
   readonly difficulty: Difficulty;
-  onScoreChange?: (score: number, distance: number, coins: number, speed: number) => void;
+  onScoreChange?: (score: number, distance: number, coins: number, speed: number, magnet: number) => void;
   onGameOver?: () => void;
   onCollectCoin?: () => void;
+  onCollectSpray?: () => void;
+  onMagnet?: () => void;
   onNearMiss?: () => void;
   onLand?: () => void;
 
-  constructor(player: PlayerData, obstacleSequence: ObstacleSpawn[], coinSequence: CoinSpawn[], difficulty: Difficulty = 'medium') {
+  constructor(player: PlayerData, obstacleSequence: ObstacleSpawn[], coinSequence: CoinSpawn[], difficulty: Difficulty = 'medium', pickupSequence: PickupSpawn[] = []) {
     this.state = createGameState(player, difficulty);
     this.obstacleSequence = obstacleSequence;
     this.coinSequence = coinSequence;
+    this.pickupSequence = pickupSequence;
     this.difficulty = difficulty;
   }
 
@@ -184,21 +214,21 @@ export class GameEngine {
   }
 
   moveLeft() {
-    if (!this.state.isRunning || this.state.gameOver || !this.state.player.isAlive) return;
+    if (!this.state.isRunning || this.state.isPaused || this.state.gameOver || !this.state.player.isAlive) return;
     if (this.state.player.lane > 0) {
       this.state.player.lane = (this.state.player.lane - 1) as Lane;
     }
   }
 
   moveRight() {
-    if (!this.state.isRunning || this.state.gameOver || !this.state.player.isAlive) return;
+    if (!this.state.isRunning || this.state.isPaused || this.state.gameOver || !this.state.player.isAlive) return;
     if (this.state.player.lane < 2) {
       this.state.player.lane = (this.state.player.lane + 1) as Lane;
     }
   }
 
   jump() {
-    if (!this.state.isRunning || this.state.gameOver || !this.state.player.isAlive) return;
+    if (!this.state.isRunning || this.state.isPaused || this.state.gameOver || !this.state.player.isAlive) return;
     if (this.state.player.state === 'running' || this.state.player.state === 'sliding') {
       this.state.player.velocityY = JUMP_FORCE;
       this.state.player.state = 'jumping';
@@ -207,7 +237,7 @@ export class GameEngine {
   }
 
   slide() {
-    if (!this.state.isRunning || this.state.gameOver || !this.state.player.isAlive) return;
+    if (!this.state.isRunning || this.state.isPaused || this.state.gameOver || !this.state.player.isAlive) return;
     if (this.state.player.state === 'running') {
       this.state.player.state = 'sliding';
       this.state.player.slideTimer = 30; // frames
@@ -215,13 +245,19 @@ export class GameEngine {
   }
 
   update(deltaTime: number = 1) {
-    if (!this.state.isRunning || this.state.gameOver || !this.state.player.isAlive) return;
+    if (!this.state.isRunning || this.state.isPaused || this.state.gameOver || !this.state.player.isAlive) return;
 
     const player = this.state.player;
 
     // Increase speed over time (per-difficulty curve)
     const cfg = DIFFICULTY_CONFIG[this.difficulty];
     this.state.speed = Math.min(cfg.maxSpeed, cfg.baseSpeed + this.state.distance * cfg.speedIncrement);
+
+    // Magnet timer ticks down in real seconds
+    if (player.magnetTimer > 0) {
+      player.magnetTimer = Math.max(0, player.magnetTimer - deltaTime / 60);
+    }
+    this.state.magnet = player.magnetTimer;
 
     // Update distance
     this.state.distance += this.state.speed * deltaTime;
@@ -263,17 +299,23 @@ export class GameEngine {
     // Spawn coins from sequence
     this.spawnCoins();
 
+    // Spawn pickups from sequence
+    this.spawnPickups();
+
     // Update obstacles
     this.updateObstacles(deltaTime);
 
     // Update coins
     this.updateCoins(deltaTime);
 
+    // Update pickups
+    this.updatePickups(deltaTime);
+
     // Check collisions
     this.checkCollisions();
 
     // Notify score change
-    this.onScoreChange?.(player.score, player.distance, player.coins, this.state.speed);
+    this.onScoreChange?.(player.score, player.distance, player.coins, this.state.speed, player.magnetTimer);
   }
 
   private spawnObstacles() {
@@ -351,6 +393,38 @@ export class GameEngine {
     this.state.coins = this.state.coins.filter(c => c.z > -100 && !c.collected);
   }
 
+  private spawnPickups() {
+    while (
+      this.nextPickupIndex < this.pickupSequence.length &&
+      this.pickupSequence[this.nextPickupIndex].distance < this.state.distance + 1500
+    ) {
+      const spawn = this.pickupSequence[this.nextPickupIndex];
+      // Keep pickups out of obstacles so they always feel earnable
+      const blocked = this.obstacleSequence.some(
+        (o) => o.lane === spawn.lane && Math.abs(o.distance - spawn.distance) < 90
+      );
+      if (!blocked) {
+        const pickup: Pickup = {
+          id: spawn.id,
+          kind: spawn.kind,
+          lane: spawn.lane,
+          z: spawn.distance - this.state.distance + 800,
+          collected: false,
+          floatOffset: Math.random() * Math.PI * 2,
+        };
+        this.state.pickups.push(pickup);
+      }
+      this.nextPickupIndex++;
+    }
+  }
+
+  private updatePickups(deltaTime: number) {
+    for (const pickup of this.state.pickups) {
+      pickup.z -= this.state.speed * deltaTime;
+    }
+    this.state.pickups = this.state.pickups.filter(p => p.z > -100 && !p.collected);
+  }
+
   private checkCollisions() {
     const player = this.state.player;
     if (player.invincibleTimer > 0) return;
@@ -404,13 +478,35 @@ export class GameEngine {
       }
     }
 
-    // Check coin collisions
+    // Check coin collisions (magnet widens the grab window + pulls nearby lanes)
+    const magnetOn = player.magnetTimer > 0;
     for (const coin of this.state.coins) {
       if (coin.collected) continue;
-      if (coin.z > -20 && coin.z < 40 && coin.lane === player.lane) {
+      const sameLane = coin.lane === player.lane;
+      if (sameLane && coin.z > -30 && coin.z < (magnetOn ? 60 : 40)) {
         coin.collected = true;
         player.coins++;
         this.onCollectCoin?.();
+      } else if (magnetOn && !sameLane && Math.abs(coin.lane - player.lane) <= 1 && coin.z > -30 && coin.z < 140) {
+        coin.collected = true;
+        player.coins++;
+        this.onCollectCoin?.();
+      }
+    }
+
+    // Check pickup collisions
+    for (const pickup of this.state.pickups) {
+      if (pickup.collected) continue;
+      if (pickup.z > -30 && pickup.z < (magnetOn ? 60 : 40) && pickup.lane === player.lane) {
+        pickup.collected = true;
+        if (pickup.kind === 'spray') {
+          player.scoreBonus += 50;
+          this.onCollectSpray?.();
+        } else {
+          player.magnetTimer = 8;
+          this.state.magnet = 8;
+          this.onMagnet?.();
+        }
       }
     }
   }

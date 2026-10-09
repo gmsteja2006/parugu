@@ -192,6 +192,126 @@ input:focus-visible {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Playful cartoon typeface (loaded in layout) */
+.font-playful {
+  font-family: 'Baloo 2', 'Inter', system-ui, sans-serif;
+}
+
+/* Chunky cartoon buttons: bold outline, 3D bottom, bounce on press */
+.btn-chunky,
+.btn-chunky-green,
+.btn-chunky-pink,
+.btn-chunky-sm {
+  font-family: 'Baloo 2', 'Inter', system-ui, sans-serif;
+  font-weight: 900;
+  border-radius: 1rem;
+  transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+  cursor: pointer;
+}
+
+.btn-chunky {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.5rem;
+  font-size: 1.05rem;
+  color: #fff;
+  background: linear-gradient(180deg, #38e0ff 0%, #1d9bf0 55%, #1668c8 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 5px 0 #0d3a6e, 0 10px 22px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.btn-chunky:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.btn-chunky:active {
+  transform: translateY(4px) scale(0.98);
+  box-shadow: 0 1px 0 #0d3a6e, 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
+.btn-chunky-green {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 2rem;
+  font-size: 1.1rem;
+  color: #fff;
+  background: linear-gradient(180deg, #8dff57 0%, #3ecf2e 55%, #1f9e1f 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 5px 0 #146114, 0 10px 22px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.btn-chunky-green:hover {
+  filter: brightness(1.08);
+}
+
+.btn-chunky-green:active {
+  transform: translateY(4px) scale(0.98);
+  box-shadow: 0 1px 0 #146114;
+}
+
+.btn-chunky-pink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.5rem;
+  font-size: 1.05rem;
+  color: #fff;
+  background: linear-gradient(180deg, #ff7ab8 0%, #f43f7f 55%, #c2185b 100%);
+  border: 3px solid #fff;
+  box-shadow: 0 5px 0 #7a0f3d, 0 10px 22px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+
+.btn-chunky-pink:hover {
+  filter: brightness(1.08);
+}
+
+.btn-chunky-pink:active {
+  transform: translateY(4px) scale(0.98);
+  box-shadow: 0 1px 0 #7a0f3d;
+}
+
+.btn-chunky-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.85rem;
+  color: #fff;
+  background: linear-gradient(180deg, #4a4a5e 0%, #2c2c3a 100%);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.55);
+  border-radius: 0.65rem;
+}
+
+.btn-chunky-sm:hover {
+  filter: brightness(1.2);
+}
+
+.btn-chunky-sm:active {
+  transform: translateY(2px) scale(0.95);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+@keyframes btn-bounce-in {
+  0% { transform: scale(0.9); }
+  60% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+.animate-btn-bounce-in {
+  animation: btn-bounce-in 0.25s ease-out;
+}
+
 /* Racing overlays */
 .scanlines {
   background: repeating-linear-gradient(

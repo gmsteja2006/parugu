@@ -97,6 +97,7 @@ export interface PlayerData {
   distance: number;
   coins: number;
   scoreBonus: number;
+  magnetTimer: number;
   color: string;
   slideTimer: number;
   isAlive: boolean;
@@ -130,11 +131,35 @@ export interface GameState {
   player: PlayerData;
   obstacles: Obstacle[];
   coins: Coin[];
+  pickups: Pickup[];
   speed: number;
   distance: number;
+  magnet: number;
   isRunning: boolean;
   isPaused: boolean;
   gameOver: boolean;
+}
+
+// ============================================
+// Pickups (spray cans + magnets)
+// ============================================
+
+export type PickupKind = 'spray' | 'magnet';
+
+export interface Pickup {
+  id: string;
+  kind: PickupKind;
+  lane: Lane;
+  z: number;
+  collected: boolean;
+  floatOffset: number;
+}
+
+export interface PickupSpawn {
+  id: string;
+  kind: PickupKind;
+  lane: Lane;
+  distance: number;
 }
 
 // ============================================
@@ -165,10 +190,10 @@ export interface Room {
   createdAt: number;
   hostId: string;
   difficulty: Difficulty;
-  // Shared obstacle/coin seed for deterministic generation
   seed: number;
   obstacleSequence: ObstacleSpawn[];
   coinSequence: CoinSpawn[];
+  pickupSequence: PickupSpawn[];
 }
 
 export interface ObstacleSpawn {

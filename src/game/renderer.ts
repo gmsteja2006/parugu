@@ -10,6 +10,7 @@ import {
   type Obstacle,
   type ObstacleType,
   type Coin,
+  type Pickup,
   type Lane,
   type RoomPlayer,
   CANVAS_WIDTH,
@@ -268,6 +269,9 @@ export class GameRenderer {
     this.drawCloudShadows();
     this.drawGrassTufts(state.distance);
     this.drawCatenary(state.distance);
+    this.drawGraffitiWalls(state.distance, state.speed);
+    this.drawBillboards(state.distance, state.speed);
+    this.drawBridge(state.distance, state.speed);
     const danger = state.obstacles.some((o) => o.z < 350 && o.z > -20);
     this.drawTrackside(state.distance, danger);
     this.drawProps(state.distance, state.speed);
@@ -277,6 +281,12 @@ export class GameRenderer {
     const sortedCoins = [...state.coins].sort((a, b) => b.z - a.z);
     for (const coin of sortedCoins) {
       if (!coin.collected) this.drawCoin(coin, state.speed);
+    }
+
+    // Pickups far -> near
+    const sortedPickups = [...state.pickups].sort((a, b) => b.z - a.z);
+    for (const p of sortedPickups) {
+      if (!p.collected) this.drawPickup(p, state.speed);
     }
 
     // Obstacles far -> near
@@ -889,6 +899,193 @@ export class GameRenderer {
     }
   }
 
+  // Graffiti-covered walls lining both sides of the cutting
+  private drawGraffitiWalls(distance: number, speed: number) {
+    const ctx = this.ctx;
+    const tags = ['ZOOM', 'FRESH', 'SK8', 'VOLT', 'DASH', 'URBAN'];
+    const tagCols = ['#ff2d78', '#00c2ff', '#b6ff2e', '#ffea00', '#ff7a1a', '#c86bff'];
+    const wallCols = ['#e8b4c8', '#a8d8f0', '#c8e8a8', '#f0d8a8', '#d8c8f0'];
+    const spacing = 430;
+    const count = 6;
+    const baseIndex = Math.floor(distance / spacing);
+    for (let k = 0; k < count; k++) {
+      const worldD = (baseIndex + k) * spacing + ((k * 251) % 160);
+      const z = worldD - distance + 60;
+      if (z < 0 || z > MAX_Z) continue;
+      const fade = emergenceFade(z, speed);
+      if (fade <= 0.05) continue;
+      for (const side of [-1, 1] as const) {
+        const groundX = VANISH_X + side * (LANE_WIDTH * 4.4);
+        const proj = project3D(groundX, z);
+        const s = proj.scale;
+        if (s < 0.1) continue;
+        const wW = 200 * s;
+        const wH = 62 * s;
+        const wx = proj.x - wW / 2;
+        const wy = proj.y - wH;
+        ctx.save();
+        ctx.globalAlpha = fade;
+        // Wall slab
+        ctx.fillStyle = wallCols[Math.abs(k * 2 + (side + 1)) % wallCols.length];
+        ctx.fillRect(wx, wy, wW, wH);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.fillRect(wx, wy, wW, Math.max(1, 3 * s));
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(wx, wy + wH - Math.max(1, 4 * s), wW, Math.max(1, 4 * s));
+        // Coping stones on top
+        ctx.fillStyle = '#8f8a80';
+        ctx.fillRect(wx - 2 * s, wy - Math.max(1.5, 4 * s), wW + 4 * s, Math.max(1.5, 4 * s));
+        // Big graffiti tag
+        if (s > 0.18) {
+          const tag = tags[Math.abs(k * 3 + (side + 1)) % tags.length];
+          ctx.save();
+          ctx.translate(proj.x, wy + wH * 0.56);
+          ctx.rotate(side * 0.04 - 0.03);
+          ctx.globalAlpha = 0.92;
+          ctx.fillStyle = tagCols[Math.abs(k + (side + 1) * 2) % tagCols.length];
+          ctx.font = `italic 900 ${Math.max(7, 26 * s)}px Inter, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = Math.max(1, 3 * s);
+          ctx.strokeStyle = 'rgba(20,20,28,0.85)';
+          ctx.strokeText(tag, 0, 0);
+          ctx.fillText(tag, 0, 0);
+          ctx.restore();
+          // Spray dots + star burst around the tag
+          ctx.fillStyle = tagCols[Math.abs(k * 5) % tagCols.length];
+          for (let d = 0; d < 5; d++) {
+            const dx = wx + ((k * 37 + d * 61) % Math.max(8, wW - 8));
+            const dy = wy + ((k * 53 + d * 29) % Math.max(8, wH - 8));
+            ctx.beginPath();
+            ctx.arc(dx, dy, Math.max(0.8, 2.2 * s), 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
+      }
+    }
+  }
+
+  // Big roadside billboards with playful ads
+  private drawBillboards(distance: number, speed: number) {
+    const ctx = this.ctx;
+    const ads: Array<{ text: string; bg: string; fg: string }> = [
+      { text: 'SKATE OR DIE', bg: '#ff2d78', fg: '#fff' },
+      { text: '★ FRESH KICKS ★', bg: '#2471c9', fg: '#ffe95a' },
+      { text: 'SPRAY DAY!', bg: '#2e9e5b', fg: '#fff' },
+    ];
+    const spacing = 1500;
+    const count = 3;
+    const baseIndex = Math.floor(distance / spacing);
+    for (let k = 0; k < count; k++) {
+      const worldD = (baseIndex + k) * spacing + 700;
+      const z = worldD - distance + 60;
+      if (z < 0 || z > MAX_Z) continue;
+      const fade = emergenceFade(z, speed);
+      if (fade <= 0.05) continue;
+      const side = k % 2 === 0 ? -1 : 1;
+      const groundX = VANISH_X + side * LANE_WIDTH * 4.1;
+      const proj = project3D(groundX, z);
+      const s = proj.scale;
+      if (s < 0.12) continue;
+      const ad = ads[Math.abs(k) % ads.length];
+      const bw = 170 * s;
+      const bh = 62 * s;
+      const poleH = 90 * s;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      // Support poles
+      ctx.fillStyle = '#5b6067';
+      ctx.fillRect(proj.x - bw * 0.32, proj.y - poleH, 5 * s, poleH);
+      ctx.fillRect(proj.x + bw * 0.32 - 5 * s, proj.y - poleH, 5 * s, poleH);
+      // Board with bold outline
+      const bx = proj.x - bw / 2;
+      const by = proj.y - poleH - bh;
+      ctx.fillStyle = '#22252a';
+      this.roundRect(bx - 3 * s, by - 3 * s, bw + 6 * s, bh + 6 * s, 5 * s);
+      ctx.fillStyle = ad.bg;
+      this.roundRect(bx, by, bw, bh, 4 * s);
+      // Shine stripe
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.fillRect(bx + 3 * s, by + 2 * s, bw - 6 * s, Math.max(1, 4 * s));
+      if (s > 0.3) {
+        ctx.fillStyle = ad.fg;
+        ctx.font = `italic 900 ${Math.max(7, 17 * s)}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(ad.text, proj.x, by + bh / 2 + 1);
+      }
+      ctx.restore();
+    }
+  }
+
+  // Footbridge spanning the tracks with a hanging event banner
+  private drawBridge(distance: number, speed: number) {
+    const ctx = this.ctx;
+    const spacing = 2400;
+    const count = 2;
+    const baseIndex = Math.floor(distance / spacing);
+    for (let k = 0; k < count; k++) {
+      const worldD = (baseIndex + k) * spacing + 1500;
+      const z = worldD - distance + 60;
+      if (z < 60 || z > MAX_Z) continue;
+      const fade = emergenceFade(z, speed);
+      if (fade <= 0.05) continue;
+      const s = project3D(VANISH_X, z).scale;
+      if (s < 0.14) continue;
+      const deckH = 185 * s; // well above trains
+      const left = project3D(VANISH_X - LANE_WIDTH * 3.1, z);
+      const right = project3D(VANISH_X + LANE_WIDTH * 3.1, z);
+      const deckY = left.y - deckH;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      // Support pillars
+      ctx.fillStyle = '#7a7f86';
+      ctx.fillRect(left.x - 4 * s, deckY, 8 * s, deckH);
+      ctx.fillRect(right.x - 4 * s, deckY, 8 * s, deckH);
+      ctx.fillStyle = '#565b62';
+      ctx.fillRect(left.x - 4 * s, deckY, 3 * s, deckH);
+      ctx.fillRect(right.x - 4 * s, deckY, 3 * s, deckH);
+      // Deck
+      ctx.fillStyle = '#8f959c';
+      ctx.fillRect(left.x - 6 * s, deckY - 6 * s, right.x - left.x + 12 * s, 7 * s);
+      // Railings
+      ctx.strokeStyle = '#4e5257';
+      ctx.lineWidth = Math.max(1, 2.5 * s);
+      ctx.beginPath();
+      ctx.moveTo(left.x - 6 * s, deckY - 6 * s);
+      ctx.lineTo(left.x - 6 * s, deckY - 22 * s);
+      ctx.lineTo(right.x + 6 * s, deckY - 22 * s);
+      ctx.lineTo(right.x + 6 * s, deckY - 6 * s);
+      ctx.stroke();
+      for (let r = 0; r <= 8; r++) {
+        const rx = left.x - 6 * s + ((right.x - left.x + 12 * s) * r) / 8;
+        ctx.beginPath();
+        ctx.moveTo(rx, deckY - 6 * s);
+        ctx.lineTo(rx, deckY - 22 * s);
+        ctx.stroke();
+      }
+      // Hanging banner
+      const banW = (right.x - left.x) * 0.5;
+      const banH = 20 * s;
+      const banX = VANISH_X - banW / 2;
+      const banY = deckY + 2 * s;
+      const banners = ['CITY JAM ★', 'SKATE PARK →'];
+      ctx.fillStyle = k % 2 === 0 ? '#ff2d78' : '#2471c9';
+      this.roundRect(banX, banY, banW, banH, 4 * s);
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(banX, banY + banH - Math.max(1, 3 * s), banW, Math.max(1, 3 * s));
+      if (s > 0.3) {
+        ctx.fillStyle = '#fff';
+        ctx.font = `italic 900 ${Math.max(6, 11 * s)}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(banners[Math.abs(k) % banners.length], VANISH_X, banY + banH / 2 + 0.5);
+      }
+      ctx.restore();
+    }
+  }
+
   // ================= PLAYERS =================
 
   private drawPlayer(player: PlayerData, speedNorm: number) {
@@ -908,6 +1105,21 @@ export class GameRenderer {
     ctx.beginPath();
     ctx.ellipse(this.smoothX, GROUND_Y + 6, width * 0.62 * shScale, 7 * shScale, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    // Magnet aura ring while powered
+    if (player.magnetTimer > 0) {
+      ctx.save();
+      ctx.strokeStyle = '#ff2d78';
+      ctx.shadowColor = '#ff2d78';
+      ctx.shadowBlur = 16;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = -(this.frameCount * 2.5) % 18;
+      ctx.beginPath();
+      ctx.ellipse(this.smoothX, GROUND_Y - 32, 36, 44, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // Speed afterimage trail
     if (speedNorm > 0.15 && player.state === 'running') {
@@ -1108,6 +1320,35 @@ export class GameRenderer {
       this.roundRect(foot.x - 6, foot.y + 0.4, 13, 1.8, 1);
     }
 
+    // ---- BACKPACK (street kid signature) ----
+    const packX = shX - 17;
+    const packY = shY + 1;
+    ctx.fillStyle = outline;
+    this.roundRect(packX - 1.5, packY - 1.5, 15, 23, 6);
+    const packGrad = ctx.createLinearGradient(packX, 0, packX + 13, 0);
+    packGrad.addColorStop(0, '#c25e0e');
+    packGrad.addColorStop(0.5, '#ff8c1a');
+    packGrad.addColorStop(1, '#a34d08');
+    ctx.fillStyle = packGrad;
+    this.roundRect(packX, packY, 13, 21, 5);
+    // Front pocket + zipper
+    ctx.fillStyle = '#8a4206';
+    this.roundRect(packX + 2, packY + 11, 9, 8, 3);
+    ctx.strokeStyle = '#ffe1b3';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(packX + 6.5, packY + 11);
+    ctx.lineTo(packX + 6.5, packY + 15);
+    ctx.stroke();
+    // Bedroll strapped on top
+    ctx.fillStyle = outline;
+    this.roundRect(packX - 2, packY - 8, 17, 8, 4);
+    ctx.fillStyle = '#2e9e5b';
+    this.roundRect(packX - 1, packY - 7, 15, 6, 3);
+    ctx.fillStyle = '#237a44';
+    ctx.fillRect(packX + 3, packY - 7, 2.5, 6);
+    ctx.fillRect(packX + 9, packY - 7, 2.5, 6);
+
     // ---- TORSO: tapered hoodie ----
     const torsoTop = 24;
     const torsoBot = 12;
@@ -1160,6 +1401,19 @@ export class GameRenderer {
     ctx.arc(shX - 4, shY + 13.5, 1.4, 0, Math.PI * 2);
     ctx.arc(shX + 4, shY + 13.5, 1.4, 0, Math.PI * 2);
     ctx.fill();
+    // Backpack straps over the shoulders
+    ctx.strokeStyle = '#7a3c06';
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.moveTo(shX - 10, shY - 1);
+    ctx.lineTo(shX - 6, shY + 14);
+    ctx.stroke();
+    ctx.strokeStyle = '#a5570b';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(shX - 10, shY - 1);
+    ctx.lineTo(shX - 6, shY + 14);
+    ctx.stroke();
     // Rim light on torso edge
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 1.6;
@@ -1234,21 +1488,56 @@ export class GameRenderer {
     ctx.beginPath();
     ctx.arc(hx + 1, hy + 3.5, 6.5, 0.15, Math.PI - 0.15);
     ctx.fill();
-    // Eye (determined, facing forward-right)
-    ctx.fillStyle = '#fff';
+    // Big cartoon eyes (blink every few seconds) + rosy cheeks
+    const blinking = this.frameCount % 190 < 7;
+    if (blinking) {
+      ctx.strokeStyle = '#5a3a28';
+      ctx.lineWidth = 1.8;
+      for (const ex of [hx - 0.5, hx + 5.5]) {
+        ctx.beginPath();
+        ctx.moveTo(ex - 2.6, hy - 0.5);
+        ctx.quadraticCurveTo(ex, hy + 0.8, ex + 2.6, hy - 0.5);
+        ctx.stroke();
+      }
+    } else {
+      for (const [ex, px] of [[hx - 0.5, hx + 0.3], [hx + 5.5, hx + 6.3]] as const) {
+        // Eye white
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.ellipse(ex, hy - 0.5, 3.1, 3.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Pupil looking forward
+        ctx.fillStyle = '#14141c';
+        ctx.beginPath();
+        ctx.arc(px, hy - 0.2, 1.9, 0, Math.PI * 2);
+        ctx.fill();
+        // Sparkle
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(px + 0.7, hy - 1, 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Determined brows
+      ctx.strokeStyle = 'rgba(30,18,12,0.9)';
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(hx - 3.5, hy - 5.2);
+      ctx.lineTo(hx + 2, hy - 4.2);
+      ctx.moveTo(hx + 3, hy - 4.2);
+      ctx.lineTo(hx + 8.5, hy - 5.2);
+      ctx.stroke();
+    }
+    // Rosy cheeks
+    ctx.fillStyle = 'rgba(255,120,130,0.55)';
     ctx.beginPath();
-    ctx.ellipse(hx + 3.4, hy - 0.5, 2.6, 3, 0, 0, Math.PI * 2);
+    ctx.arc(hx - 3.5, hy + 3.2, 2, 0, Math.PI * 2);
+    ctx.arc(hx + 7.5, hy + 3.2, 2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#101018';
+    // Grin
+    ctx.strokeStyle = '#7a4030';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(hx + 4.2, hy - 0.3, 1.5, 0, Math.PI * 2);
-    ctx.fill();
-    // Brow
-    ctx.strokeStyle = 'rgba(20,10,10,0.8)';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(hx + 0.5, hy - 4.4);
-    ctx.lineTo(hx + 6, hy - 3.6);
+    ctx.arc(hx + 2, hy + 3.4, 3.4, 0.25, Math.PI - 0.5);
     ctx.stroke();
     // Backward cap: dome + back brim + neon strap
     ctx.fillStyle = darker;
@@ -1981,6 +2270,119 @@ export class GameRenderer {
     ctx.fillRect(x, y + h * 0.72, w, h * 0.06);
     ctx.fillStyle = 'rgba(0,255,150,0.20)';
     ctx.fillRect(x, y + h * 0.72, w, 1);
+  }
+
+  // Spray cans (+50) and magnets (coin power-up) — glowing, bobbing, spinning
+  private drawPickup(pickup: Pickup, speed: number) {
+    if (pickup.z < -60 || pickup.z > MAX_Z) return;
+    const ctx = this.ctx;
+    const laneX = getLaneX(pickup.lane);
+    const proj = project3D(laneX, pickup.z);
+    if (proj.scale <= 0.06) return;
+    const fadeIn = emergenceFade(pickup.z, speed);
+    if (fadeIn <= 0.01) return;
+    const s = proj.scale;
+    const floatY = Math.sin(this.frameCount * 0.09 + pickup.floatOffset) * 6 * s;
+    const cx = proj.x;
+    const cy = proj.y - 34 * s + floatY;
+
+    ctx.save();
+    ctx.globalAlpha = fadeIn;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(proj.x, proj.y + 3, 10 * s, 3.5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (pickup.kind === 'spray') {
+      const w = 15 * s;
+      const h = 24 * s;
+      const x = cx - w / 2;
+      const y = cy - h / 2;
+      ctx.save();
+      ctx.shadowColor = '#ff2d78';
+      ctx.shadowBlur = 16 * s;
+      // Can body
+      const g = ctx.createLinearGradient(x, 0, x + w, 0);
+      g.addColorStop(0, '#a31247');
+      g.addColorStop(0.5, '#ff2d78');
+      g.addColorStop(1, '#7a0c34');
+      ctx.fillStyle = g;
+      this.roundRect(x, y + 4 * s, w, h - 4 * s, 3 * s);
+      // Label band with star
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(x + 1 * s, y + h * 0.42, w - 2 * s, h * 0.3);
+      ctx.fillStyle = '#ff2d78';
+      this.star(cx, y + h * 0.57, 4 * s, 5);
+      // Metal cap + nozzle
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#c9ced6';
+      this.roundRect(x + w * 0.14, y, w * 0.72, 6 * s, 2 * s);
+      ctx.fillStyle = '#7c848d';
+      ctx.fillRect(cx - 1.5 * s, y - 2.5 * s, 3 * s, 3 * s);
+      // Gloss stripe
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(x + 2 * s, y + 6 * s, 2.5 * s, h - 10 * s);
+      ctx.restore();
+      // Twinkling spray sparkles
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < 3; i++) {
+        const a = this.frameCount * 0.1 + pickup.floatOffset + (i * Math.PI * 2) / 3;
+        const sx = cx + Math.cos(a) * 16 * s;
+        const sy = cy + Math.sin(a) * 14 * s;
+        const r = Math.max(0.8, 2 * s * (0.6 + 0.4 * Math.sin(a * 2)));
+        ctx.beginPath();
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      // Horseshoe magnet power-up
+      const r = 11 * s;
+      ctx.save();
+      ctx.shadowColor = '#ff2d78';
+      ctx.shadowBlur = 16 * s;
+      ctx.strokeStyle = '#e03028';
+      ctx.lineWidth = Math.max(2, 7 * s);
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, Math.PI * 0.92, Math.PI * 2.08);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      // Silver tips
+      ctx.fillStyle = '#e8ecf2';
+      ctx.fillRect(cx - r - 3.5 * s, cy - 1 * s, 7 * s, 7 * s);
+      ctx.fillRect(cx + r - 3.5 * s, cy - 1 * s, 7 * s, 7 * s);
+      // Bolts of attraction
+      ctx.strokeStyle = '#ffe95a';
+      ctx.lineWidth = Math.max(1, 1.8 * s);
+      const zig = Math.sin(this.frameCount * 0.2 + pickup.floatOffset) * 3 * s;
+      for (const ex of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + ex * r * 0.9, cy + 8 * s + zig);
+        ctx.lineTo(cx + ex * r * 0.5, cy + 13 * s + zig);
+        ctx.lineTo(cx + ex * r * 0.9, cy + 18 * s + zig);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // Little 5-point star helper (tags, labels, bursts)
+  private star(cx: number, cy: number, r: number, points: number) {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const rr = i % 2 === 0 ? r : r * 0.45;
+      const a = (i * Math.PI) / points - Math.PI / 2;
+      const px = cx + Math.cos(a) * rr;
+      const py = cy + Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+    ctx.fill();
   }
 
   private drawCoin(coin: Coin, speed: number) {

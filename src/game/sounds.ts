@@ -59,19 +59,24 @@ export function playSlideSound() {
 export function playCoinSound() {
   try {
     const ctx = getAudioContext();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.setValueAtTime(1100, ctx.currentTime + 0.05);
-    gain.gain.setValueAtTime(0.12, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.15);
+    // Bright high-pitched cartoon "ding!" — bell + sparkle fifth
+    const notes: Array<[number, number, number]> = [
+      [1568, 0, 0.12],
+      [2093, 0.07, 0.16],
+    ];
+    for (const [freq, delay, dur] of notes) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + delay);
+      gain.gain.exponentialRampToValueAtTime(0.16, ctx.currentTime + delay + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + dur);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + dur + 0.02);
+    }
   } catch {
     // Audio not available
   }
@@ -181,6 +186,89 @@ export function playLand() {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.14);
+  } catch {
+    // Audio not available
+  }
+}
+
+export function playSpray() {
+  try {
+    const ctx = getAudioContext();
+    // Spray-can hiss + happy ding
+    const dur = 0.22;
+    const bufferSize = Math.floor(ctx.sampleRate * dur);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      const t = i / bufferSize;
+      data[i] = (Math.random() * 2 - 1) * Math.sin(t * Math.PI) * 0.7;
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(4000, ctx.currentTime);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    noise.start(ctx.currentTime);
+
+    const osc = ctx.createOscillator();
+    const og = ctx.createGain();
+    osc.connect(og);
+    og.connect(ctx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1319, ctx.currentTime + 0.12);
+    osc.frequency.setValueAtTime(1760, ctx.currentTime + 0.2);
+    og.gain.setValueAtTime(0.14, ctx.currentTime + 0.12);
+    og.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime + 0.12);
+    osc.stop(ctx.currentTime + 0.37);
+  } catch {
+    // Audio not available
+  }
+}
+
+export function playMagnet() {
+  try {
+    const ctx = getAudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    // Rising power-up sweep
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(220, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.18);
+    osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.37);
+  } catch {
+    // Audio not available
+  }
+}
+
+export function playWhoops() {
+  try {
+    const ctx = getAudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    // Playful slide-whistle tumble, not harsh
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(750, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(320, ctx.currentTime + 0.35);
+    osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.55);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.62);
   } catch {
     // Audio not available
   }

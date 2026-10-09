@@ -23,7 +23,7 @@ export default function CountdownOverlay({ count }: CountdownOverlayProps) {
           {isGo ? 'full send' : 'get ready'}
         </p>
         <div
-          className="text-[130px] md:text-[170px] font-black italic leading-none tracking-tighter"
+          className="font-playful text-[130px] md:text-[170px] font-black italic leading-none tracking-tighter"
           style={{
             background: isGo
               ? 'linear-gradient(135deg, #a7f3d0, #34d399 40%, #00e5ff)'
