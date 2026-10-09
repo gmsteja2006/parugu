@@ -113,6 +113,8 @@ export interface Obstacle {
   height: number;
   color: string;
   passed: boolean;
+  moving?: boolean; // trains rolling toward the player
+  approach?: number; // extra closing speed for moving trains
 }
 
 export interface Coin {
@@ -173,6 +175,7 @@ export interface ObstacleSpawn {
   type: ObstacleType;
   lane: Lane;
   distance: number;
+  moving?: boolean;
 }
 
 export interface CoinSpawn {
@@ -222,10 +225,10 @@ export interface PlayerUpdateData {
 // ============================================
 
 export const OBSTACLE_DEFS: Record<ObstacleType, { width: number; height: number; color: string; canSlideUnder: boolean }> = {
-  train: { width: 60, height: 120, color: '#e74c3c', canSlideUnder: false },
+  train: { width: 62, height: 118, color: '#e74c3c', canSlideUnder: false },
   barrier: { width: 70, height: 40, color: '#f39c12', canSlideUnder: false },
   cone: { width: 30, height: 35, color: '#e67e22', canSlideUnder: false },
-  tall_barrier: { width: 70, height: 90, color: '#9b59b6', canSlideUnder: true },
+  tall_barrier: { width: 70, height: 90, color: '#c9a227', canSlideUnder: true },
 };
 
 export const PLAYER_COLORS = ['#00e5ff', '#ff4081', '#76ff03', '#ffea00'];

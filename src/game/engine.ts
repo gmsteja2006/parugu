@@ -91,6 +91,9 @@ export function generateObstacleSequence(seed: number, difficulty: Difficulty = 
   let distance = 700;
   for (let i = 0; i < count; i++) {
     const type = types[Math.floor(nextRandom() * types.length)];
+    // Some trains roll toward the player (Subway-Surfers style).
+    // RNG order must stay identical to server.js!
+    const moving = type === 'train' && nextRandom() < 0.35;
     const lane = Math.floor(nextRandom() * LANE_COUNT) as Lane;
     // Generous spacing so obstacles arrive gradually, never suddenly
     const gap = cfg.gapMin + nextRandom() * (cfg.gapMax - cfg.gapMin);
@@ -101,6 +104,7 @@ export function generateObstacleSequence(seed: number, difficulty: Difficulty = 
       type,
       lane,
       distance,
+      moving,
     });
 
     // Second obstacle in a different lane, staggered
@@ -284,6 +288,9 @@ export class GameEngine {
         height: def.height,
         color: def.color,
         passed: false,
+        moving: spawn.moving,
+        // Moving trains close in faster than the world scroll
+        approach: spawn.moving ? DIFFICULTY_CONFIG[this.difficulty].baseSpeed * 0.5 : 0,
       };
       this.state.obstacles.push(obstacle);
       this.nextObstacleIndex++;
@@ -317,7 +324,7 @@ export class GameEngine {
 
   private updateObstacles(deltaTime: number) {
     for (const obstacle of this.state.obstacles) {
-      obstacle.z -= this.state.speed * deltaTime;
+      obstacle.z -= (this.state.speed + (obstacle.approach ?? 0)) * deltaTime;
     }
     // Remove obstacles that are behind the player
     this.state.obstacles = this.state.obstacles.filter(o => o.z > -200);

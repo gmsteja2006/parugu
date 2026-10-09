@@ -63,10 +63,12 @@ function generateObstacleSequence(seed, difficulty = 'medium', count = 500) {
   let distance = 700;
   for (let i = 0; i < count; i++) {
     const type = OBSTACLE_TYPES[Math.floor(nextRandom() * OBSTACLE_TYPES.length)];
+    // Keep RNG order identical to src/game/engine.ts!
+    const moving = type === 'train' && nextRandom() < 0.35;
     const lane = Math.floor(nextRandom() * 3);
     const gap = cfg.gapMin + nextRandom() * (cfg.gapMax - cfg.gapMin);
 
-    spawns.push({ id: `obs_${i}`, type, lane, distance });
+    spawns.push({ id: `obs_${i}`, type, lane, distance, moving });
 
     if (nextRandom() < cfg.doubleChance && i > 15) {
       const otherLane = ((lane + 1 + Math.floor(nextRandom() * 2)) % 3);

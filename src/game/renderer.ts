@@ -30,10 +30,10 @@ const MAX_Z = 800;
 
 // Warning marker meta per obstacle type
 const OBSTACLE_META: Record<ObstacleType, { icon: string; color: string; hint: string }> = {
-  train: { icon: '🚆', color: '#ff5147', hint: 'DODGE!' },
-  barrier: { icon: '🚧', color: '#ffb300', hint: 'JUMP!' },
-  cone: { icon: '🔻', color: '#ff7a1a', hint: 'JUMP!' },
-  tall_barrier: { icon: '⬇', color: '#76ff03', hint: 'SLIDE!' },
+  train: { icon: '🚆', color: '#d63a2f', hint: 'DODGE!' },
+  barrier: { icon: '🚧', color: '#b87a00', hint: 'JUMP!' },
+  cone: { icon: '🔻', color: '#d35400', hint: 'JUMP!' },
+  tall_barrier: { icon: '⬇', color: '#2f9e00', hint: 'SLIDE!' },
 };
 
 interface BuildingDef {
@@ -65,16 +65,16 @@ let buildingsGenerated = false;
 function generateBuildings() {
   if (buildingsGenerated) return;
   buildings = [];
-  const palette = ['#141430', '#181838', '#101024', '#1d1040'];
-  const signs = ['#00e5ff', '#ff2d78', '#ffb300', '#7c4dff', '#76ff03'];
+  const palette = ['#c9bfae', '#a9b7c6', '#d9d0bd', '#b3c2cf', '#c4ad8f'];
+  const trims = ['#8a7a63', '#6e8296', '#93876f', '#7d90a3', '#7a6248'];
   for (let i = 0; i < 9; i++) {
     buildings.push({
       x: 8 + i * 52,
       width: 42 + Math.random() * 22,
       height: 120 + Math.random() * 210,
       color: palette[Math.floor(Math.random() * palette.length)],
-      windowColor: `hsl(${190 + Math.random() * 80}, 70%, ${55 + Math.random() * 25}%)`,
-      signColor: signs[Math.floor(Math.random() * signs.length)],
+      windowColor: 'day',
+      signColor: trims[Math.floor(Math.random() * trims.length)],
       signY: 20 + Math.random() * 60,
     });
   }
@@ -84,8 +84,8 @@ function generateBuildings() {
       width: 42 + Math.random() * 22,
       height: 120 + Math.random() * 210,
       color: palette[Math.floor(Math.random() * palette.length)],
-      windowColor: `hsl(${190 + Math.random() * 80}, 70%, ${55 + Math.random() * 25}%)`,
-      signColor: signs[Math.floor(Math.random() * signs.length)],
+      windowColor: 'day',
+      signColor: trims[Math.floor(Math.random() * trims.length)],
       signY: 20 + Math.random() * 60,
     });
   }
@@ -114,7 +114,6 @@ export class GameRenderer {
   private ctx: CanvasRenderingContext2D;
   private frameCount: number = 0;
   private particles: Particle[] = [];
-  private starField: Star[] = [];
   private clouds: CloudDef[] = [];
   private skyline: SkylineBlock[] = [];
   private smoothX: number = VANISH_X;
@@ -127,23 +126,10 @@ export class GameRenderer {
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
-    this.initStarField();
     this.initClouds();
     this.initSkyline();
     generateBuildings();
     this.smoothX = getLaneX(1);
-  }
-
-  private initStarField() {
-    for (let i = 0; i < 70; i++) {
-      this.starField.push({
-        x: Math.random() * CANVAS_WIDTH,
-        y: Math.random() * 150,
-        size: Math.random() * 1.8 + 0.4,
-        twinkle: Math.random() * Math.PI * 2,
-        speed: 0.02 + Math.random() * 0.04,
-      });
-    }
   }
 
   private initClouds() {
@@ -215,13 +201,13 @@ export class GameRenderer {
     ctx.translate(-VANISH_X, -CANVAS_HEIGHT * 0.55);
 
     this.drawSky(state.distance);
-    this.drawStars();
     this.drawSun();
     this.drawClouds(state.distance, speedNorm);
     this.drawSkyline(state.distance);
     this.drawSideBuildings(state.distance, speedNorm);
-    this.drawRoad(state.distance, state.speed, speedNorm);
-    this.drawStreetLamps(state.distance);
+    this.drawTracks(state.distance, state.speed, speedNorm);
+    const danger = state.obstacles.some((o) => o.z < 350 && o.z > -20);
+    this.drawTrackside(state.distance, danger);
     this.drawWarnings(state.obstacles);
 
     // Coins far -> near
@@ -264,84 +250,61 @@ export class GameRenderer {
     this.drawVignette();
   }
 
-  // ================= SKY / CITY =================
+  // ================= SKY / CITY (bright subway day) =================
 
   private drawSky(distance: number) {
     const ctx = this.ctx;
-    const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y + 60);
-    g.addColorStop(0, '#030310');
-    g.addColorStop(0.45, '#150a33');
-    g.addColorStop(0.72, '#3a1157');
-    g.addColorStop(0.86, '#7a1c5e');
-    g.addColorStop(1, '#1a1030');
+    // Bright blue daytime gradient
+    const g = ctx.createLinearGradient(0, 0, 0, GROUND_Y + 40);
+    g.addColorStop(0, '#2f8fd6');
+    g.addColorStop(0.55, '#7cc3ee');
+    g.addColorStop(0.85, '#c8e9fa');
+    g.addColorStop(1, '#e8f5fd');
     ctx.fillStyle = g;
-    ctx.fillRect(-20, -20, CANVAS_WIDTH + 40, GROUND_Y + 80);
+    ctx.fillRect(-20, -20, CANVAS_WIDTH + 40, GROUND_Y + 60);
 
-    // Horizon neon glow band
-    const pulse = 0.55 + Math.sin(this.frameCount * 0.02) * 0.08;
+    // Soft sun haze near horizon
     const hg = ctx.createRadialGradient(
       VANISH_X, VANISH_Y, 10,
-      VANISH_X, VANISH_Y, 320
+      VANISH_X, VANISH_Y, 300
     );
-    hg.addColorStop(0, `rgba(255,45,120,${0.35 * pulse + 0.2})`);
-    hg.addColorStop(0.4, `rgba(124,77,255,${0.18 * pulse})`);
-    hg.addColorStop(1, 'rgba(0,0,0,0)');
+    hg.addColorStop(0, 'rgba(255,255,255,0.5)');
+    hg.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = hg;
     ctx.fillRect(0, 0, CANVAS_WIDTH, GROUND_Y + 20);
 
-    // Lower ground base
-    const gg = ctx.createLinearGradient(0, GROUND_Y, 0, CANVAS_HEIGHT);
-    gg.addColorStop(0, '#171722');
-    gg.addColorStop(1, '#080810');
+    // Grass base below horizon (tracks drawn over the middle)
+    const gg = ctx.createLinearGradient(0, GROUND_Y - 30, 0, CANVAS_HEIGHT);
+    gg.addColorStop(0, '#7fae5a');
+    gg.addColorStop(0.4, '#5d9245');
+    gg.addColorStop(1, '#3c6b2f');
     ctx.fillStyle = gg;
-    ctx.fillRect(-20, GROUND_Y, CANVAS_WIDTH + 40, CANVAS_HEIGHT - GROUND_Y + 20);
-  }
-
-  private drawStars() {
-    const ctx = this.ctx;
-    for (const s of this.starField) {
-      s.twinkle += s.speed;
-      const a = 0.25 + Math.abs(Math.sin(s.twinkle)) * 0.5;
-      ctx.fillStyle = `rgba(255,255,255,${a.toFixed(2)})`;
-      ctx.fillRect(s.x, s.y, s.size, s.size);
-    }
+    ctx.fillRect(-20, GROUND_Y - 30, CANVAS_WIDTH + 40, CANVAS_HEIGHT - GROUND_Y + 50);
   }
 
   private drawSun() {
     const ctx = this.ctx;
-    const cx = VANISH_X;
-    const cy = 168;
-    const r = 78;
-    // Outer glow
-    const glow = ctx.createRadialGradient(cx, cy, r * 0.4, cx, cy, r * 2.2);
-    glow.addColorStop(0, 'rgba(255,80,140,0.35)');
-    glow.addColorStop(1, 'rgba(255,80,140,0)');
+    const cx = VANISH_X + 230;
+    const cy = 84;
+    const r = 44;
+    // Warm glow
+    const glow = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, r * 2.6);
+    glow.addColorStop(0, 'rgba(255,250,220,0.9)');
+    glow.addColorStop(0.4, 'rgba(255,240,190,0.45)');
+    glow.addColorStop(1, 'rgba(255,240,190,0)');
     ctx.fillStyle = glow;
     ctx.beginPath();
-    ctx.arc(cx, cy, r * 2.2, 0, Math.PI * 2);
+    ctx.arc(cx, cy, r * 2.6, 0, Math.PI * 2);
     ctx.fill();
-
-    // Sun disc
-    const sg = ctx.createLinearGradient(0, cy - r, 0, cy + r);
-    sg.addColorStop(0, '#ffe95a');
-    sg.addColorStop(0.55, '#ff9a3c');
-    sg.addColorStop(1, '#ff2d78');
-    ctx.save();
+    // Bright disc
+    const sg = ctx.createRadialGradient(cx - 8, cy - 8, 4, cx, cy, r);
+    sg.addColorStop(0, '#ffffff');
+    sg.addColorStop(0.6, '#fff6c8');
+    sg.addColorStop(1, '#ffdf6b');
+    ctx.fillStyle = sg;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.fillStyle = sg;
-    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
-    // Synthwave slits
-    ctx.fillStyle = 'rgba(10,5,25,0.9)';
-    let y = cy + 6;
-    let h = 2;
-    while (y < cy + r) {
-      ctx.fillRect(cx - r, y, r * 2, h);
-      y += h + 9;
-      h += 1.6;
-    }
-    ctx.restore();
+    ctx.fill();
   }
 
   private drawClouds(distance: number, speedNorm: number) {
@@ -352,13 +315,19 @@ export class GameRenderer {
         c.x = CANVAS_WIDTH + 20;
         c.y = 30 + Math.random() * 120;
       }
-      ctx.fillStyle = 'rgba(40,20,70,0.55)';
+      // Fluffy white puff: stacked ellipses + soft gray belly
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      const n = 4;
+      for (let i = 0; i < n; i++) {
+        const px = c.x + (i / (n - 1) - 0.5) * c.w * 0.7;
+        const pr = 13 + ((i * 37) % 10);
+        ctx.beginPath();
+        ctx.ellipse(px, c.y, c.w / (n * 1.15), pr, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgba(170,200,225,0.5)';
       ctx.beginPath();
-      ctx.ellipse(c.x, c.y, c.w / 2, 12, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = 'rgba(255,60,130,0.14)';
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y + 8, c.w / 2.4, 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(c.x, c.y + 10, c.w / 2.6, 7, 0, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -368,31 +337,22 @@ export class GameRenderer {
     const totalW = this.skyline.reduce((a, b) => a + b.w + b.gap, 0);
     let offset = (distance * 0.06) % totalW;
     const baseY = VANISH_Y + 2;
-    ctx.fillStyle = '#0c0a26';
-    // Draw two wraps to cover width
+    // Hazy daytime far city
     for (let wrap = -1; wrap < 2; wrap++) {
       let x = -offset + wrap * totalW;
       for (const b of this.skyline) {
         const top = baseY - b.h * 0.55;
+        ctx.fillStyle = '#9db8cc';
         ctx.fillRect(x, top, b.w, b.h * 0.55 + 4);
-        // Antenna
-        if (b.h > 70) {
-          ctx.fillRect(x + b.w / 2 - 1, top - 10, 2, 10);
-          const blink = Math.sin(this.frameCount * 0.08 + x) > 0.6;
-          ctx.fillStyle = blink ? '#ff3355' : '#550f1e';
-          ctx.beginPath();
-          ctx.arc(x + b.w / 2, top - 11, 2, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = '#0c0a26';
-        }
-        // Sparse lit windows
-        ctx.fillStyle = 'rgba(0,229,255,0.20)';
-        for (let wy = top + 6; wy < baseY - 4; wy += 9) {
+        ctx.fillStyle = '#8aa5bb';
+        ctx.fillRect(x, top, b.w, 3);
+        // Faint window grid
+        ctx.fillStyle = 'rgba(60,90,120,0.35)';
+        for (let wy = top + 7; wy < baseY - 4; wy += 9) {
           for (let wx = x + 4; wx < x + b.w - 4; wx += 8) {
-            if ((wx * 7 + wy * 13) % 11 < 2) ctx.fillRect(wx, wy, 2, 3);
+            if ((wx * 7 + wy * 13) % 11 < 3) ctx.fillRect(wx, wy, 2.5, 3.5);
           }
         }
-        ctx.fillStyle = '#0c0a26';
         x += b.w + b.gap;
       }
     }
@@ -400,214 +360,212 @@ export class GameRenderer {
 
   private drawSideBuildings(distance: number, speedNorm: number) {
     const ctx = this.ctx;
-    const sway = Math.sin(distance * 0.004) * 2;
     for (const b of buildings) {
-      const bx = b.x + sway * (b.x < VANISH_X ? -1 : 1) * 0.4;
+      const bx = b.x;
       const by = GROUND_Y - b.height;
-      // Body with vertical gradient (lit from horizon)
-      const bg = ctx.createLinearGradient(0, by, 0, GROUND_Y);
-      bg.addColorStop(0, '#0a0a20');
-      bg.addColorStop(1, b.color);
+      // Sun-lit body with shaded side
+      const bg = ctx.createLinearGradient(bx - b.width / 2, 0, bx + b.width / 2, 0);
+      bg.addColorStop(0, '#a89a83');
+      bg.addColorStop(0.35, b.color);
+      bg.addColorStop(1, '#8f8271');
       ctx.fillStyle = bg;
       ctx.fillRect(bx - b.width / 2, by, b.width, b.height);
-      // Rooftop edge light
-      ctx.fillStyle = b.signColor + '55';
-      ctx.fillRect(bx - b.width / 2, by, b.width, 2);
-      // Windows — staggered, some lit
-      const rows = Math.floor(b.height / 22);
-      const cols = Math.floor(b.width / 14);
+      // Roof slab + water tank on some
+      ctx.fillStyle = '#6f6555';
+      ctx.fillRect(bx - b.width / 2 - 2, by - 5, b.width + 4, 6);
+      if ((b.x | 0) % 3 === 0) {
+        ctx.fillStyle = '#8a6f4d';
+        ctx.fillRect(bx - 8, by - 20, 16, 15);
+        ctx.fillStyle = '#6e5739';
+        ctx.beginPath();
+        ctx.moveTo(bx - 9, by - 20);
+        ctx.lineTo(bx, by - 27);
+        ctx.lineTo(bx + 9, by - 20);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Window grid — sky-blue reflective panes
+      const rows = Math.floor(b.height / 24);
+      const cols = Math.floor(b.width / 15);
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          const lit = Math.sin(r * 1.7 + c * 2.3 + distance * 0.002) > -0.1;
-          ctx.fillStyle = lit ? b.windowColor : 'rgba(5,5,15,0.9)';
-          ctx.globalAlpha = lit ? 0.85 : 1;
-          const wx = bx - b.width / 2 + 5 + c * 13;
-          const wy = by + 10 + r * 21;
-          ctx.fillRect(wx, wy, 7, 11);
+          const shade = (r * 3 + c * 5) % 4 === 0;
+          ctx.fillStyle = shade ? '#3d6a8f' : '#bfe0f2';
+          ctx.strokeStyle = '#f4efe2';
+          ctx.lineWidth = 1.5;
+          const wx = bx - b.width / 2 + 5 + c * 14;
+          const wy = by + 10 + r * 23;
+          ctx.fillRect(wx, wy, 8, 12);
+          ctx.strokeRect(wx, wy, 8, 12);
         }
       }
-      ctx.globalAlpha = 1;
-      // Vertical neon sign strip
-      ctx.save();
-      ctx.shadowColor = b.signColor;
-      ctx.shadowBlur = 12;
+      // Colored trim stripe (replaces neon sign)
       ctx.fillStyle = b.signColor;
-      ctx.globalAlpha = 0.75 + Math.sin(this.frameCount * 0.06 + b.x) * 0.2;
-      ctx.fillRect(bx + b.width / 2 - 4, by + b.signY, 3, 46);
-      ctx.restore();
-      ctx.globalAlpha = 1;
+      ctx.fillRect(bx - b.width / 2, by + b.height * 0.3, b.width, 4);
     }
-    // Dark side aprons outside road for contrast
-    const apronGradL = ctx.createLinearGradient(0, 0, 150, 0);
-    apronGradL.addColorStop(0, 'rgba(0,0,0,0.55)');
-    apronGradL.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = apronGradL;
-    ctx.fillRect(0, VANISH_Y, 150, GROUND_Y - VANISH_Y);
-    const apronGradR = ctx.createLinearGradient(CANVAS_WIDTH, 0, CANVAS_WIDTH - 150, 0);
-    apronGradR.addColorStop(0, 'rgba(0,0,0,0.55)');
-    apronGradR.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = apronGradR;
-    ctx.fillRect(CANVAS_WIDTH - 150, VANISH_Y, 150, GROUND_Y - VANISH_Y);
   }
 
-  // ================= ROAD =================
+  // ================= TRACKS =================
 
-  private drawRoad(distance: number, speed: number, speedNorm: number) {
+  private drawTracks(distance: number, speed: number, speedNorm: number) {
     const ctx = this.ctx;
-    const roadLeftBottom = VANISH_X - LANE_WIDTH * 1.9;
-    const roadRightBottom = VANISH_X + LANE_WIDTH * 1.9;
-    const roadHalfTop = 22;
+    const balHalfBottom = LANE_WIDTH * 2.5;
+    const balHalfTop = 30;
 
-    // Asphalt body
-    const rg = ctx.createLinearGradient(0, VANISH_Y, 0, GROUND_Y);
-    rg.addColorStop(0, '#1c1c2e');
-    rg.addColorStop(0.5, '#232333');
-    rg.addColorStop(1, '#2b2b3d');
-    ctx.fillStyle = rg;
+    // Gravel ballast bed
+    const bal = ctx.createLinearGradient(0, VANISH_Y, 0, GROUND_Y);
+    bal.addColorStop(0, '#9a8f7c');
+    bal.addColorStop(0.5, '#8a7f6c');
+    bal.addColorStop(1, '#7a6f5e');
+    ctx.fillStyle = bal;
     ctx.beginPath();
-    ctx.moveTo(VANISH_X - roadHalfTop, VANISH_Y);
-    ctx.lineTo(roadLeftBottom, GROUND_Y);
-    ctx.lineTo(roadRightBottom, GROUND_Y);
-    ctx.lineTo(VANISH_X + roadHalfTop, VANISH_Y);
+    ctx.moveTo(VANISH_X - balHalfTop, VANISH_Y);
+    ctx.lineTo(VANISH_X - balHalfBottom, GROUND_Y);
+    ctx.lineTo(VANISH_X + balHalfBottom, GROUND_Y);
+    ctx.lineTo(VANISH_X + balHalfTop, VANISH_Y);
     ctx.closePath();
     ctx.fill();
 
-    // Wet center sheen (magenta/cyan reflection)
-    const sheen = ctx.createLinearGradient(VANISH_X - 60, 0, VANISH_X + 60, 0);
-    sheen.addColorStop(0, 'rgba(0,229,255,0)');
-    sheen.addColorStop(0.5, `rgba(255,45,120,${0.05 + speedNorm * 0.05})`);
-    sheen.addColorStop(1, 'rgba(0,229,255,0)');
-    ctx.fillStyle = sheen;
-    ctx.beginPath();
-    ctx.moveTo(VANISH_X - 10, VANISH_Y);
-    ctx.lineTo(VANISH_X - 70, GROUND_Y);
-    ctx.lineTo(VANISH_X + 70, GROUND_Y);
-    ctx.lineTo(VANISH_X + 10, VANISH_Y);
-    ctx.closePath();
-    ctx.fill();
-
-    // Neon edge rails — glow + core
-    const edges: Array<[number, number, number, number, string]> = [
-      [VANISH_X - roadHalfTop, VANISH_Y, roadLeftBottom, GROUND_Y, '#00e5ff'],
-      [VANISH_X + roadHalfTop, VANISH_Y, roadRightBottom, GROUND_Y, '#ff2d78'],
-    ];
-    for (const [x1, y1, x2, y2, col] of edges) {
-      ctx.save();
-      ctx.strokeStyle = col;
-      ctx.globalAlpha = 0.9;
-      ctx.shadowColor = col;
-      ctx.shadowBlur = 14;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = '#ffffff';
-      ctx.globalAlpha = 0.85;
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Lane dividers — fast moving neon dashes
-    for (let i = 0; i < 2; i++) {
-      const t = (i + 1) / 3;
-      const xTop = VANISH_X - roadHalfTop + roadHalfTop * 2 * t;
-      const xBot = roadLeftBottom + (roadRightBottom - roadLeftBottom) * t;
-      ctx.save();
-      ctx.strokeStyle = i === 0 ? 'rgba(0,229,255,0.75)' : 'rgba(255,45,120,0.75)';
-      ctx.shadowColor = i === 0 ? '#00e5ff' : '#ff2d78';
-      ctx.shadowBlur = 6;
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([18, 22]);
-      ctx.lineDashOffset = -((distance * 3.2) % 40);
-      ctx.beginPath();
-      ctx.moveTo(xTop, VANISH_Y + 4);
-      ctx.lineTo(xBot, GROUND_Y);
-      ctx.stroke();
-      ctx.restore();
-    }
-    ctx.setLineDash([]);
-
-    // Asphalt speed streaks rushing toward camera
-    const streaks = 16;
+    // Scrolling gravel speckles
     const flow = (distance * 0.004) % 1;
-    for (let i = 0; i < streaks; i++) {
-      const tt = ((i / streaks) + flow) % 1;
-      const y = VANISH_Y + (GROUND_Y - VANISH_Y) * tt * tt;
-      const halfW = ((roadRightBottom - roadLeftBottom) / 2) * tt;
-      const alpha = 0.04 + tt * (0.10 + speedNorm * 0.12);
-      ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(3)})`;
-      const wob = ((i * 137) % 90) / 90 - 0.5; // pseudo-random lateral
-      const cx = VANISH_X + wob * halfW * 1.2;
-      ctx.fillRect(cx - halfW * 0.5, y, halfW, Math.max(1, 2.5 * tt));
+    const speckN = 60;
+    for (let i = 0; i < speckN; i++) {
+      const tt = ((i / speckN) + flow) % 1;
+      const t = tt * tt;
+      const y = VANISH_Y + (GROUND_Y - VANISH_Y) * t;
+      const halfW = balHalfBottom * t + balHalfTop * (1 - t);
+      const fx = ((i * 7919) % 100) / 100 - 0.5;
+      const gx = VANISH_X + fx * halfW * 1.7;
+      const shade = (i * 13) % 3;
+      ctx.fillStyle = shade === 0 ? 'rgba(60,50,40,0.35)' : shade === 1 ? 'rgba(255,250,240,0.30)' : 'rgba(90,80,65,0.35)';
+      const sz = Math.max(1, 3 * t);
+      ctx.fillRect(gx, y, sz, sz);
+    }
+
+    // Wooden sleepers scrolling toward the camera (main speed cue)
+    const tieN = 15;
+    for (let i = 0; i < tieN; i++) {
+      const tt = ((i / tieN) + flow) % 1;
+      const t = tt * tt;
+      const y = VANISH_Y + (GROUND_Y - VANISH_Y) * t;
+      const halfW = (balHalfBottom * t + balHalfTop * (1 - t)) * 0.94;
+      ctx.fillStyle = '#5d4a33';
+      ctx.fillRect(VANISH_X - halfW, y, halfW * 2, Math.max(1, 5 * t));
+      ctx.fillStyle = 'rgba(255,240,220,0.18)';
+      ctx.fillRect(VANISH_X - halfW, y, halfW * 2, Math.max(1, 1.5 * t));
+    }
+
+    // Steel rails: two per lane, converging to the horizon
+    for (const lane of [0, 1, 2] as Lane[]) {
+      const cx = getLaneX(lane);
+      for (const off of [-15, 15]) {
+        const xTop = VANISH_X + off * 0.12;
+        const xBot = cx + off;
+        // Rail body
+        ctx.strokeStyle = '#7c848d';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(xTop, VANISH_Y);
+        ctx.lineTo(xBot, GROUND_Y + 2);
+        ctx.stroke();
+        // Sun glint on rail head
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(xTop, VANISH_Y);
+        ctx.lineTo(xBot, GROUND_Y + 2);
+        ctx.stroke();
+      }
     }
   }
 
-  private drawStreetLamps(distance: number) {
+  // Trackside fences + railway signals (red when danger is near)
+  private drawTrackside(distance: number, danger: boolean) {
     const ctx = this.ctx;
-    const spacing = 240;
+    const spacing = 220;
     const count = 9;
     const baseIndex = Math.floor(distance / spacing);
+    let signalSide: -1 | 1 = 1;
     for (let k = 0; k < count; k++) {
       const worldD = (baseIndex + k) * spacing;
       const z = worldD - distance + 60;
       if (z < 0 || z > MAX_Z) continue;
       for (const side of [-1, 1] as const) {
-        const groundX = VANISH_X + side * (LANE_WIDTH * 2.6);
+        const groundX = VANISH_X + side * (LANE_WIDTH * 2.9);
         const proj = project3D(groundX, z);
         const s = proj.scale;
-        if (s < 0.08) continue;
-        const poleH = 130 * s;
+        if (s < 0.1) continue;
+        const poleH = 110 * s;
         const poleX = proj.x;
         const baseY = proj.y;
-        // Pole
-        ctx.strokeStyle = '#2a2a3d';
-        ctx.lineWidth = Math.max(1, 5 * s);
+        // Wooden fence post
+        ctx.fillStyle = '#6b543a';
+        ctx.fillRect(poleX - 2.5 * s, baseY - poleH * 0.55, 5 * s, poleH * 0.55);
+        ctx.fillStyle = '#4e3d29';
+        ctx.fillRect(poleX - 2.5 * s, baseY - poleH * 0.55, 5 * s, 2 * s);
+        // Signal mast every 3rd post, alternating sides
+        if (k % 3 === 0 && side === signalSide) {
+          // Tall gray mast
+          ctx.fillStyle = '#5b6067';
+          ctx.fillRect(poleX - 2.5 * s, baseY - poleH, 5 * s, poleH);
+          ctx.fillStyle = '#43474d';
+          ctx.fillRect(poleX - 2.5 * s, baseY - poleH, 2 * s, poleH);
+          // Signal head box
+          const headW = 16 * s;
+          const headH = 30 * s;
+          const headX = poleX - headW / 2;
+          const headY = baseY - poleH - headH;
+          ctx.fillStyle = '#22252a';
+          this.roundRect(headX, headY, headW, headH, 3 * s);
+          ctx.fillStyle = '#3a3e45';
+          ctx.fillRect(headX + 1.5 * s, headY + 1.5 * s, headW - 3 * s, headH - 3 * s);
+          // Lamps: red on top, green below
+          const lampR = Math.max(1.2, 4.5 * s);
+          ctx.fillStyle = danger ? '#3a1214' : '#401416';
+          ctx.beginPath();
+          ctx.arc(poleX, headY + headH * 0.28, lampR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = danger ? '#2a3a1c' : '#1e2a12';
+          ctx.beginPath();
+          ctx.arc(poleX, headY + headH * 0.72, lampR, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.save();
+          if (danger) {
+            ctx.shadowColor = '#ff3b30';
+            ctx.shadowBlur = 14 * s;
+            ctx.fillStyle = '#ff5147';
+            ctx.beginPath();
+            ctx.arc(poleX, headY + headH * 0.28, lampR, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.shadowColor = '#76ff03';
+            ctx.shadowBlur = 14 * s;
+            ctx.fillStyle = '#8dff3f';
+            ctx.beginPath();
+            ctx.arc(poleX, headY + headH * 0.72, lampR, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+          // Small ladder rungs
+          ctx.fillStyle = 'rgba(255,255,255,0.25)';
+          for (let r = 0; r < 3; r++) {
+            ctx.fillRect(poleX - 2.5 * s, baseY - poleH + 8 * s + r * 12 * s, 5 * s, 1.5 * s);
+          }
+        }
+      }
+      if (k % 3 === 0) signalSide = (signalSide === 1 ? -1 : 1) as -1 | 1;
+    }
+    // Fence wires converging to horizon
+    ctx.strokeStyle = 'rgba(90,75,55,0.8)';
+    ctx.lineWidth = 1.5;
+    for (const side of [-1, 1]) {
+      const gxBot = VANISH_X + side * LANE_WIDTH * 2.9;
+      const gxTop = VANISH_X + side * 8;
+      for (const hf of [0.3, 0.5]) {
         ctx.beginPath();
-        ctx.moveTo(poleX, baseY);
-        ctx.lineTo(poleX, baseY - poleH);
+        ctx.moveTo(gxTop, VANISH_Y + 10 + 8 * hf);
+        ctx.lineTo(gxBot, GROUND_Y - 60 * hf - 4);
         ctx.stroke();
-        // Arm toward road
-        ctx.strokeStyle = '#2a2a3d';
-        ctx.lineWidth = Math.max(1, 3 * s);
-        ctx.beginPath();
-        ctx.moveTo(poleX, baseY - poleH);
-        ctx.lineTo(poleX - side * 26 * s, baseY - poleH);
-        ctx.stroke();
-        // Lamp head glow
-        const lampX = poleX - side * 26 * s;
-        const lampY = baseY - poleH;
-        const col = side < 0 ? '#00e5ff' : '#ff9a3c';
-        ctx.save();
-        ctx.shadowColor = col;
-        ctx.shadowBlur = 18 * s;
-        ctx.fillStyle = col;
-        ctx.beginPath();
-        ctx.arc(lampX, lampY, Math.max(1, 4.5 * s), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-        // Light cone onto road
-        const coneGrad = ctx.createLinearGradient(0, lampY, 0, baseY);
-        coneGrad.addColorStop(0, side < 0 ? 'rgba(0,229,255,0.16)' : 'rgba(255,154,60,0.16)');
-        coneGrad.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = coneGrad;
-        ctx.beginPath();
-        ctx.moveTo(lampX - 4 * s, lampY);
-        ctx.lineTo(lampX + 4 * s, lampY);
-        ctx.lineTo(lampX + side * 30 * s + 22 * s, baseY);
-        ctx.lineTo(lampX + side * 30 * s - 22 * s, baseY);
-        ctx.closePath();
-        ctx.fill();
-        // Ground light pool
-        ctx.fillStyle = side < 0 ? 'rgba(0,229,255,0.10)' : 'rgba(255,154,60,0.10)';
-        ctx.beginPath();
-        ctx.ellipse(lampX + side * 30 * s, baseY, 26 * s, 5 * s, 0, 0, Math.PI * 2);
-        ctx.fill();
       }
     }
   }
@@ -624,17 +582,12 @@ export class GameRenderer {
     const drawY = isSliding ? GROUND_Y - PLAYER_SLIDE_HEIGHT : player.y;
     const bob = player.state === 'running' ? Math.sin(this.frameCount * 0.45) * 2 : 0;
 
-    // Shadow (shrinks when jumping)
+    // Shadow (shrinks when jumping) — crisp daylight shadow
     const airH = Math.max(0, GROUND_Y - PLAYER_HEIGHT - player.y);
     const shScale = Math.max(0.4, 1 - airH / 260);
-    ctx.fillStyle = `rgba(0,0,0,${(0.5 * shScale).toFixed(2)})`;
+    ctx.fillStyle = `rgba(20,20,25,${(0.55 * shScale).toFixed(2)})`;
     ctx.beginPath();
     ctx.ellipse(this.smoothX, GROUND_Y + 6, width * 0.62 * shScale, 7 * shScale, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // Neon ground glow
-    ctx.fillStyle = player.color + '33';
-    ctx.beginPath();
-    ctx.ellipse(this.smoothX, GROUND_Y + 4, width * 0.9, 9, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Speed afterimage trail
@@ -648,13 +601,13 @@ export class GameRenderer {
 
     ctx.save();
     ctx.shadowColor = player.color;
-    ctx.shadowBlur = 22;
+    ctx.shadowBlur = 8;
     this.drawRunner(drawX, drawY + bob, width, height, player.color, lean, player.state);
     ctx.restore();
 
     // Run dust / slide sparks
     if (player.state === 'running' && this.frameCount % 2 === 0) {
-      this.addParticle(this.smoothX + (Math.random() - 0.5) * 18, GROUND_Y - 2, 'rgba(160,160,180,0.8)', 'dust');
+      this.addParticle(this.smoothX + (Math.random() - 0.5) * 18, GROUND_Y - 2, 'rgba(195,180,150,0.85)', 'dust');
     }
     if (isSliding && this.frameCount % 2 === 0) {
       this.addParticle(this.smoothX + 12, GROUND_Y - 4, '#ffd34d', 'spark');
@@ -1020,7 +973,7 @@ export class GameRenderer {
     ctx.save();
     ctx.globalAlpha = 0.5;
     ctx.shadowColor = player.color;
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = 8;
     this.drawRunner(drawX, drawY, width, height, player.color, 0, player.state);
     ctx.restore();
 
@@ -1074,18 +1027,18 @@ export class GameRenderer {
     ctx.save();
     ctx.globalAlpha = fadeIn;
 
-    // Ground shadow + neon pool
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    // Ground shadow
+    ctx.fillStyle = 'rgba(20,20,25,0.4)';
     ctx.beginPath();
     ctx.ellipse(proj.x, proj.y + 3 * s, w * 0.55, 5 * s, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.shadowColor = obstacle.color;
-    ctx.shadowBlur = 10 * s;
+    ctx.shadowColor = 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 6 * s;
 
     switch (obstacle.type) {
       case 'train':
-        this.drawTrain(drawX, drawY, w, h, s);
+        this.drawTrain(drawX, drawY, w, h, s, obstacle);
         break;
       case 'barrier':
         this.drawBarrier(drawX, drawY, w, h, s);
@@ -1102,7 +1055,7 @@ export class GameRenderer {
     // Distance fog (also faded so far objects melt into the haze)
     const fog = Math.max(0, Math.min(0.55, obstacle.z / MAX_Z - 0.35)) * fadeIn;
     if (fog > 0.02) {
-      ctx.fillStyle = `rgba(20,8,40,${fog.toFixed(2)})`;
+      ctx.fillStyle = `rgba(205,232,248,${fog.toFixed(2)})`;
       ctx.fillRect(drawX - 4, drawY - 4, w + 8, h + 8);
     }
 
@@ -1158,8 +1111,8 @@ export class GameRenderer {
       ctx.save();
       ctx.globalAlpha = Math.max(0.25, Math.min(1, 0.35 + urgency * 0.65)) * blink + 0.25;
       ctx.shadowColor = meta.color;
-      ctx.shadowBlur = urgent ? 16 : 9;
-      ctx.fillStyle = 'rgba(6,6,18,0.85)';
+      ctx.shadowBlur = urgent ? 12 : 7;
+      ctx.fillStyle = 'rgba(255,255,255,0.93)';
       this.roundRect(mx - pw / 2, my, pw, ph, 11);
       ctx.strokeStyle = meta.color;
       ctx.lineWidth = urgent ? 2 : 1.4;
@@ -1199,12 +1152,28 @@ export class GameRenderer {
     return best;
   }
 
-  private drawTrain(x: number, y: number, w: number, h: number, s: number) {
+  private drawTrain(x: number, y: number, w: number, h: number, s: number, ob: Obstacle) {
     const ctx = this.ctx;
+    const moving = !!ob.moving;
+    // Subway livery picked from the obstacle id (red / blue / yellow / green)
+    const liveries = ['#d63a2f', '#2471c9', '#e8a90c', '#2e9e5b'] as const;
+    let hash = 0;
+    for (let i = 0; i < ob.id.length; i++) hash = (hash * 31 + ob.id.charCodeAt(i)) | 0;
+    const livery = liveries[Math.abs(hash) % liveries.length];
+    const dark = this.shade(livery, 0.55);
+    const darker = this.shade(livery, 0.35);
+
+    // Rumble for moving trains
+    if (moving && s > 0.4) {
+      x += Math.sin(this.frameCount * 0.9) * 1.6 * s;
+    }
+
     // Far away: clean silhouette so it reads instantly, no noise
     if (s < 0.3) {
-      ctx.fillStyle = '#8f1a14';
+      ctx.fillStyle = darker;
       this.roundRect(x, y, w, h, Math.max(1, 4 * s));
+      ctx.fillStyle = livery;
+      this.roundRect(x + w * 0.06, y + h * 0.06, w * 0.88, h * 0.88, Math.max(1, 3 * s));
       ctx.fillStyle = 'rgba(190,230,255,0.8)';
       ctx.fillRect(x + w * 0.1, y + h * 0.16, w * 0.8, Math.max(1, h * 0.14));
       ctx.save();
@@ -1219,37 +1188,37 @@ export class GameRenderer {
       return;
     }
 
-    // Body — metallic crimson with dark outline
-    ctx.fillStyle = 'rgba(8,5,10,0.9)';
+    // Body — subway livery with dark outline
+    ctx.fillStyle = 'rgba(15,15,20,0.9)';
     this.roundRect(x - 1, y - 1, w + 2, h + 2, Math.max(1, 6 * s));
     const g = ctx.createLinearGradient(x, 0, x + w, 0);
-    g.addColorStop(0, '#7a1210');
-    g.addColorStop(0.22, '#d63a2f');
-    g.addColorStop(0.5, '#ff6a5a');
-    g.addColorStop(0.78, '#b02318');
-    g.addColorStop(1, '#5d0d0b');
+    g.addColorStop(0, darker);
+    g.addColorStop(0.25, livery);
+    g.addColorStop(0.5, this.shade(livery, 1.15));
+    g.addColorStop(0.75, livery);
+    g.addColorStop(1, darker);
     ctx.fillStyle = g;
     this.roundRect(x, y, w, h, Math.max(1, 5 * s));
 
-    // Roof + pantograph
-    ctx.fillStyle = '#23232e';
+    // Gray roof + vents + pantograph
+    ctx.fillStyle = '#4a4d55';
     this.roundRect(x + w * 0.04, y - Math.max(2, 7 * s), w * 0.92, Math.max(2, 8 * s), 2);
-    ctx.strokeStyle = '#3d3d4d';
+    ctx.fillStyle = '#33363d';
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(x + w * (0.18 + i * 0.25), y - Math.max(1, 4 * s), w * 0.14, Math.max(1, 3 * s));
+    }
+    ctx.strokeStyle = '#2c2e34';
     ctx.lineWidth = Math.max(1, 2 * s);
     ctx.beginPath();
     ctx.moveTo(x + w * 0.3, y - Math.max(2, 7 * s));
     ctx.lineTo(x + w * 0.5, y - Math.max(4, 13 * s));
     ctx.lineTo(x + w * 0.7, y - Math.max(2, 7 * s));
     ctx.stroke();
-    if (Math.random() < 0.1) {
-      this.addParticle(x + w / 2, y - 12 * s, '#9be8ff', 'spark');
+    if (moving && Math.random() < 0.15) {
+      this.addParticle(x + w / 2, y - 12 * s, '#fff2a8', 'spark');
+    } else if (Math.random() < 0.04) {
+      this.addParticle(x + w / 2, y - 12 * s, '#cfe8ff', 'spark');
     }
-    // Roof marker lights
-    ctx.fillStyle = '#ff3b30';
-    ctx.beginPath();
-    ctx.arc(x + w * 0.12, y + 1.5 * s, Math.max(1, 2 * s), 0, Math.PI * 2);
-    ctx.arc(x + w * 0.88, y + 1.5 * s, Math.max(1, 2 * s), 0, Math.PI * 2);
-    ctx.fill();
 
     // Windshield with sky reflection + diagonal shine
     const wy = y + h * 0.13;
@@ -1280,36 +1249,37 @@ export class GameRenderer {
     ctx.closePath();
     ctx.fill();
 
-    // Fleet number plate
-    if (s > 0.45) {
-      ctx.fillStyle = 'rgba(10,10,16,0.85)';
-      this.roundRect(x + w * 0.42, y + h * 0.42, w * 0.16, h * 0.07, 2 * s);
+    // Route-number board on top
+    if (s > 0.4) {
+      ctx.fillStyle = 'rgba(15,15,20,0.9)';
+      this.roundRect(x + w * 0.36, y + h * 0.045, w * 0.28, h * 0.06, 2 * s);
       ctx.fillStyle = '#ffd957';
       ctx.font = `800 ${Math.max(6, 10 * s)}px Inter, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('07', x + w * 0.5, y + h * 0.458);
+      ctx.fillText(`${(Math.abs(hash) % 9) + 1}`, x + w * 0.5, y + h * 0.078);
     }
 
     // Nose stripes
-    ctx.fillStyle = 'rgba(255,221,87,0.9)';
+    ctx.fillStyle = 'rgba(245,245,250,0.9)';
     ctx.fillRect(x, y + h * 0.52, w, Math.max(1, h * 0.055));
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
     ctx.fillRect(x, y + h * 0.575, w, Math.max(1, h * 0.028));
 
-    // Headlights + beams
+    // Headlights + beams (brighter + longer when moving)
+    const beamLen = (moving ? 95 : 64) * s;
     for (const fx of [0.28, 0.72]) {
       const lx = x + w * fx;
       const ly = y + h * 0.74;
-      const beam = ctx.createLinearGradient(0, ly, 0, ly + 64 * s);
-      beam.addColorStop(0, 'rgba(255,250,200,0.22)');
+      const beam = ctx.createLinearGradient(0, ly, 0, ly + beamLen);
+      beam.addColorStop(0, moving ? 'rgba(255,250,200,0.35)' : 'rgba(255,250,200,0.22)');
       beam.addColorStop(1, 'rgba(255,250,200,0)');
       ctx.fillStyle = beam;
       ctx.beginPath();
       ctx.moveTo(lx - 4 * s, ly);
       ctx.lineTo(lx + 4 * s, ly);
-      ctx.lineTo(lx + 15 * s, ly + 64 * s);
-      ctx.lineTo(lx - 15 * s, ly + 64 * s);
+      ctx.lineTo(lx + 15 * s, ly + beamLen);
+      ctx.lineTo(lx - 15 * s, ly + beamLen);
       ctx.closePath();
       ctx.fill();
       // Housing + lamp
@@ -1319,22 +1289,50 @@ export class GameRenderer {
       ctx.fill();
       ctx.save();
       ctx.shadowColor = '#fff7ae';
-      ctx.shadowBlur = 16 * s;
+      ctx.shadowBlur = (moving ? 22 : 14) * s;
       ctx.fillStyle = '#fffbe0';
       ctx.beginPath();
       ctx.arc(lx, ly, Math.max(1, 3.6 * s), 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }
-    // Grill + bumper
+    // Alternating ditch lights on moving trains
+    if (moving && s > 0.35) {
+      const phase = Math.sin(this.frameCount * 0.5) > 0;
+      for (let i = 0; i < 2; i++) {
+        const on = (i === 0) === phase;
+        const dx = x + w * (i === 0 ? 0.12 : 0.88);
+        const dy = y + h * 0.6;
+        ctx.save();
+        ctx.shadowColor = on ? '#ff9d0a' : '#442200';
+        ctx.shadowBlur = on ? 12 * s : 0;
+        ctx.fillStyle = on ? '#ffcf4d' : '#6b4a12';
+        ctx.beginPath();
+        ctx.arc(dx, dy, Math.max(1.2, 3 * s), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    // Grill + coupler + bumper
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     for (let i = 0; i < 4; i++) {
       ctx.fillRect(x + w * 0.15 + i * w * 0.18, y + h * 0.84, w * 0.12, Math.max(1, h * 0.05));
     }
-    ctx.fillStyle = '#43434f';
+    ctx.fillStyle = '#2c2c34';
+    ctx.fillRect(x + w * 0.44, y + h - Math.max(1, 4 * s), w * 0.12, Math.max(2, 6 * s));
+    ctx.fillStyle = '#4a4d55';
     this.roundRect(x - 2 * s, y + h - Math.max(2, 7 * s), w + 4 * s, Math.max(2, 7 * s), 2);
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.fillRect(x - 2 * s, y + h - Math.max(2, 7 * s), w + 4 * s, 1);
+  }
+
+  // Lighten (>1) or darken (<1) a hex color
+  private shade(hex: string, factor: number): string {
+    if (!hex.startsWith('#') || hex.length < 7) return hex;
+    const r = Math.max(0, Math.min(255, Math.round(parseInt(hex.slice(1, 3), 16) * factor)));
+    const g = Math.max(0, Math.min(255, Math.round(parseInt(hex.slice(3, 5), 16) * factor)));
+    const b = Math.max(0, Math.min(255, Math.round(parseInt(hex.slice(5, 7), 16) * factor)));
+    return `rgb(${r}, ${g}, ${b})`;
   }
 
   private drawBarrier(x: number, y: number, w: number, h: number, s: number) {
@@ -1354,31 +1352,31 @@ export class GameRenderer {
       return;
     }
 
-    // A-frame legs with crossbar
-    ctx.fillStyle = 'rgba(8,5,10,0.9)';
+    // A-frame legs with crossbar (galvanized gray)
+    ctx.fillStyle = 'rgba(15,15,20,0.9)';
     const legW = Math.max(2, 6 * s);
     ctx.fillRect(x + 1 * s, y + h * 0.22, legW + 2, h * 0.78 + 5 * s);
     ctx.fillRect(x + w - legW - 3 * s, y + h * 0.22, legW + 2, h * 0.78 + 5 * s);
-    ctx.fillStyle = '#4a4a5c';
+    ctx.fillStyle = '#8b9096';
     ctx.fillRect(x + 2 * s, y + h * 0.25, legW, h * 0.75 + 4 * s);
     ctx.fillRect(x + w - legW - 2 * s, y + h * 0.25, legW, h * 0.75 + 4 * s);
     // Crossbar between legs
-    ctx.fillStyle = '#33333f';
+    ctx.fillStyle = '#6e7378';
     ctx.fillRect(x + 2 * s, y + h * 0.62, w - 4 * s, Math.max(1.5, 4 * s));
     // Rubber feet
-    ctx.fillStyle = '#1c1c24';
+    ctx.fillStyle = '#33363b';
     this.roundRect(x - 5 * s, y + h + 1, 18 * s, 4.5 * s, 2);
     this.roundRect(x + w - 13 * s, y + h + 1, 18 * s, 4.5 * s, 2);
 
-    // Chevron board: orange with white chevrons pointing UP (jump over)
+    // Chevron board: white with RED chevrons pointing UP (jump over!)
     const boardY = y + h * 0.1;
     const boardH = h * 0.34;
-    ctx.fillStyle = 'rgba(8,5,10,0.9)';
+    ctx.fillStyle = 'rgba(15,15,20,0.9)';
     this.roundRect(x - 1.5, boardY - 1.5, w + 3, boardH + 3, 3 * s);
-    ctx.fillStyle = '#ff9d0a';
+    ctx.fillStyle = '#f5f2ea';
     this.roundRect(x, boardY, w, boardH, 2.5 * s);
-    // White chevrons ^
-    ctx.fillStyle = '#f6f6fb';
+    // Red chevrons ^
+    ctx.fillStyle = '#d63a2f';
     const chevN = 4;
     for (let i = 0; i < chevN; i++) {
       const cxp = x + (w * (i + 0.5)) / chevN;
@@ -1399,18 +1397,18 @@ export class GameRenderer {
     ctx.fillStyle = 'rgba(0,0,0,0.30)';
     ctx.fillRect(x + 2, boardY + boardH - Math.max(1.5, 3 * s), w - 4, Math.max(1.5, 3 * s));
 
-    // Alternating blinking beacons
+    // Small daylight reflectors (no heavy glow)
     const phaseA = Math.sin(this.frameCount * 0.25) > 0;
     const beacons = [
       { bx: x + w * 0.18, on: phaseA },
       { bx: x + w * 0.82, on: !phaseA },
     ];
     for (const b of beacons) {
-      ctx.fillStyle = '#1c1c24';
+      ctx.fillStyle = '#5b6067';
       ctx.fillRect(b.bx - 2 * s, y, 4 * s, 7 * s); // stem
       ctx.save();
-      ctx.shadowColor = b.on ? '#ffb300' : '#442200';
-      ctx.shadowBlur = b.on ? 15 * s : 0;
+      ctx.shadowColor = b.on ? '#ff9d0a' : '#442200';
+      ctx.shadowBlur = b.on ? 7 * s : 0;
       // Dome housing
       ctx.fillStyle = '#2c2c36';
       ctx.beginPath();
@@ -1498,54 +1496,54 @@ export class GameRenderer {
     const ctx = this.ctx;
     // Far: poles + beam + curtain blocks
     if (s < 0.3) {
-      ctx.fillStyle = '#3a2a55';
+      ctx.fillStyle = '#5b6067';
       ctx.fillRect(x, y, Math.max(1.5, 5 * s), h);
       ctx.fillRect(x + w - Math.max(1.5, 5 * s), y, Math.max(1.5, 5 * s), h);
-      ctx.fillStyle = '#5b3fa8';
+      ctx.fillStyle = '#e8a90c';
       ctx.fillRect(x - 3 * s, y, w + 6 * s, h * 0.2);
       for (let i = 0; i < 5; i++) {
-        ctx.fillStyle = i % 2 === 0 ? '#ff2d78' : '#1a1a2e';
+        ctx.fillStyle = i % 2 === 0 ? '#e8a90c' : '#22252a';
         ctx.fillRect(x + (i * w) / 5, y + h * 0.2, w / 5 + 1, h * 0.28);
       }
       return;
     }
 
-    // Steel side poles with bolt plates + neon trim
+    // Galvanized steel side poles with bolt plates
     const poleW = Math.max(2.5, 8 * s);
-    ctx.fillStyle = 'rgba(8,5,10,0.9)';
+    ctx.fillStyle = 'rgba(15,15,20,0.9)';
     ctx.fillRect(x - 3 * s, y - 1, poleW + 2, h + 2);
     ctx.fillRect(x + w - poleW - 1 * s, y - 1, poleW + 2, h + 2);
     const pg = ctx.createLinearGradient(x, 0, x + poleW, 0);
-    pg.addColorStop(0, '#241a3d');
-    pg.addColorStop(0.5, '#4b3670');
-    pg.addColorStop(1, '#1c1430');
+    pg.addColorStop(0, '#43474d');
+    pg.addColorStop(0.5, '#7c848d');
+    pg.addColorStop(1, '#3a3e45');
     ctx.fillStyle = pg;
     ctx.fillRect(x - 2 * s, y, poleW, h);
     const pg2 = ctx.createLinearGradient(0, 0, poleW, 0);
-    pg2.addColorStop(0, '#1c1430');
-    pg2.addColorStop(0.5, '#4b3670');
-    pg2.addColorStop(1, '#241a3d');
+    pg2.addColorStop(0, '#3a3e45');
+    pg2.addColorStop(0.5, '#7c848d');
+    pg2.addColorStop(1, '#43474d');
     ctx.fillStyle = pg2;
     ctx.fillRect(x + w - poleW + 2 * s, y, poleW, h);
-    // Neon trim lines
-    ctx.fillStyle = '#b388ff';
+    // Safety-yellow edge stripes
+    ctx.fillStyle = '#e8c90c';
     ctx.fillRect(x - 2 * s, y, Math.max(1, 2 * s), h);
     ctx.fillRect(x + w - poleW + 2 * s, y, Math.max(1, 2 * s), h);
     // Bolt plates
-    ctx.fillStyle = '#171226';
+    ctx.fillStyle = '#2f3339';
     for (const py of [0.3, 0.6, 0.9]) {
       ctx.fillRect(x - 2 * s, y + h * py, poleW, Math.max(1.5, 4 * s));
       ctx.fillRect(x + w - poleW + 2 * s, y + h * py, poleW, Math.max(1.5, 4 * s));
     }
 
-    // Truss beam with hazard edge
+    // Industrial yellow beam with hazard edge
     const beamH = h * 0.24;
-    ctx.fillStyle = 'rgba(8,5,10,0.9)';
+    ctx.fillStyle = 'rgba(15,15,20,0.9)';
     this.roundRect(x - 5 * s - 1, y - 1, w + 10 * s + 2, beamH + 2, 4 * s);
     const bg = ctx.createLinearGradient(0, y, 0, y + beamH);
-    bg.addColorStop(0, '#6a4fc0');
-    bg.addColorStop(0.5, '#4a3486');
-    bg.addColorStop(1, '#2b1e52');
+    bg.addColorStop(0, '#f2c018');
+    bg.addColorStop(0.5, '#dd9d08');
+    bg.addColorStop(1, '#a86e04');
     ctx.fillStyle = bg;
     this.roundRect(x - 4 * s, y, w + 8 * s, beamH, 3 * s);
     // Hazard chevrons along beam bottom
@@ -1569,32 +1567,32 @@ export class GameRenderer {
       ctx.fill();
     }
 
-    // Hanging rubber flaps with gaps (slide under!)
+    // Hanging striped rubber flaps (slide under!)
     const curY = y + beamH;
     const curH = h * 0.3;
     const flaps = 5;
     for (let i = 0; i < flaps; i++) {
       const fx = x + (i * w) / flaps;
       const fw = w / flaps;
-      ctx.fillStyle = 'rgba(8,5,10,0.9)';
+      ctx.fillStyle = 'rgba(15,15,20,0.9)';
       ctx.fillRect(fx - 1, curY - 1, fw + 2, curH + 3);
       const fg = ctx.createLinearGradient(fx, 0, fx + fw, 0);
-      fg.addColorStop(0, i % 2 === 0 ? '#a31247' : '#121222');
-      fg.addColorStop(0.5, i % 2 === 0 ? '#ff2d78' : '#26263a');
-      fg.addColorStop(1, i % 2 === 0 ? '#7a0c34' : '#0c0c16');
+      fg.addColorStop(0, i % 2 === 0 ? '#8a5f04' : '#1d1f24');
+      fg.addColorStop(0.5, i % 2 === 0 ? '#e8a90c' : '#3a3e45');
+      fg.addColorStop(1, i % 2 === 0 ? '#6e4a03' : '#14161a');
       ctx.fillStyle = fg;
       ctx.fillRect(fx, curY, fw - Math.max(1, 2.5 * s), curH);
       // Flap bottom notch
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
       ctx.fillRect(fx, curY + curH - Math.max(1.5, 3 * s), fw - Math.max(1, 2.5 * s), Math.max(1.5, 3 * s));
     }
 
     // Sign with down arrow
     const pulse = 0.7 + Math.sin(this.frameCount * 0.15) * 0.3;
     ctx.save();
-    ctx.shadowColor = '#76ff03';
-    ctx.shadowBlur = 11 * s;
-    ctx.fillStyle = 'rgba(8,28,8,0.92)';
+    ctx.shadowColor = '#2f9e00';
+    ctx.shadowBlur = 7 * s;
+    ctx.fillStyle = 'rgba(10,30,10,0.92)';
     const signW = w * 0.66;
     const signH = Math.max(9, 14 * s);
     const signX = x + w * 0.17;
@@ -1714,8 +1712,8 @@ export class GameRenderer {
       const y = 240 + Math.random() * 220;
       const len = 40 + Math.random() * 110 * (0.5 + speedNorm);
       const grad = ctx.createLinearGradient(0, y, 0, y + len);
-      grad.addColorStop(0, 'rgba(0,229,255,0)');
-      grad.addColorStop(0.5, `rgba(160,220,255,${(0.10 + speedNorm * 0.22).toFixed(3)})`);
+      grad.addColorStop(0, 'rgba(255,255,255,0)');
+      grad.addColorStop(0.5, `rgba(255,255,255,${(0.28 + speedNorm * 0.35).toFixed(3)})`);
       grad.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.strokeStyle = grad;
       ctx.lineWidth = 1.5 + Math.random() * 1.5;
@@ -1729,11 +1727,11 @@ export class GameRenderer {
 
   private drawColorGrade(speedNorm: number) {
     const ctx = this.ctx;
-    // Subtle top cool / bottom warm grade + speed warmth
+    // Warm daylight grade: sunny top, golden ground glow at speed
     const g = ctx.createLinearGradient(0, 0, 0, CANVAS_HEIGHT);
-    g.addColorStop(0, 'rgba(0,180,255,0.04)');
+    g.addColorStop(0, 'rgba(255,250,230,0.06)');
     g.addColorStop(0.6, 'rgba(0,0,0,0)');
-    g.addColorStop(1, `rgba(255,45,120,${(0.03 + speedNorm * 0.05).toFixed(3)})`);
+    g.addColorStop(1, `rgba(255,190,90,${(0.04 + speedNorm * 0.06).toFixed(3)})`);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
@@ -1741,11 +1739,11 @@ export class GameRenderer {
   private drawVignette() {
     const ctx = this.ctx;
     const gradient = ctx.createRadialGradient(
-      VANISH_X, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.32,
-      VANISH_X, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.78
+      VANISH_X, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.35,
+      VANISH_X, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.8
     );
     gradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    gradient.addColorStop(1, 'rgba(2, 2, 10, 0.5)');
+    gradient.addColorStop(1, 'rgba(20, 30, 45, 0.26)');
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   }
@@ -1848,12 +1846,4 @@ interface Particle {
   size: number;
   color: string;
   kind: 'dust' | 'spark' | 'coin' | 'crash' | 'smoke';
-}
-
-interface Star {
-  x: number;
-  y: number;
-  size: number;
-  twinkle: number;
-  speed: number;
 }
