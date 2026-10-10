@@ -1,7 +1,7 @@
 // ============================================
-// Game Renderer — Canvas 2D pseudo-3D rendering
-// Neon dusk city chase: synthwave sun, parallax skyline,
-// rushing street lamps, wet asphalt, motion speed feel
+// Parugu Renderer — Canvas 2D pseudo-3D rendering
+// Bright subway day: sun, skyline, ballast tracks,
+// signals, graffiti, billboards, footbridge
 // ============================================
 
 import {

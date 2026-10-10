@@ -67,12 +67,8 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
       {/* Title */}
       <div className="relative z-10 mb-12 text-center">
         <h1 className="font-playful text-6xl md:text-7xl font-black tracking-tight mb-2 drop-shadow-[0_5px_0_rgba(0,0,0,0.45)]">
-          <span className="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-            NEON
-          </span>
-          <br />
-          <span className="bg-gradient-to-r from-pink-400 via-yellow-400 to-cyan-400 bg-clip-text text-transparent">
-            RUNNER
+          <span className="bg-gradient-to-r from-amber-300 via-orange-400 to-pink-500 bg-clip-text text-transparent">
+            PARUGU
           </span>
         </h1>
         <p className="text-white/40 text-sm tracking-[0.3em] uppercase font-medium">

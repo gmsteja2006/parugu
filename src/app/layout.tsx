@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Neon Runner — Multiplayer Endless Runner",
-  description: "A real-time multiplayer endless runner game. Create or join rooms, compete with friends, and dominate the leaderboard!",
-  keywords: ["endless runner", "multiplayer", "game", "neon", "runner"],
+  title: "Parugu — Multiplayer Endless Runner",
+  description: "Parugu is a real-time multiplayer endless runner game. Create or join rooms, compete with friends, and dominate the leaderboard!",
+  keywords: ["parugu", "endless runner", "multiplayer", "game", "subway", "runner"],
 };
 
 export default function RootLayout({

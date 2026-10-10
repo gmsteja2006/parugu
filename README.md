@@ -1,6 +1,6 @@
-# 🏃 Neon Runner — Multiplayer Endless Runner
+# 🏃 Parugu — Multiplayer Endless Runner
 
-A real-time multiplayer endless runner game built with Next.js, Canvas 2D, and Socket.IO. Race against friends, dodge obstacles, collect coins, and compete for the highest score!
+A real-time multiplayer endless runner game built with Next.js, Canvas 2D, and Socket.IO. Race against friends, dodge trains, grab coins and spray cans, and compete for the highest score!
 
 ## ✨ Features
 
@@ -8,8 +8,8 @@ A real-time multiplayer endless runner game built with Next.js, Canvas 2D, and S
 - **Real-time Multiplayer**: Up to 4 players per room via Socket.IO WebSockets
 - **Room System**: Create or join rooms with unique 5-character codes
 - **Live Leaderboard**: See all players' scores updated in real-time
-- **Procedural Generation**: Deterministic obstacle/coin sequences shared across all players
-- **Neon Aesthetics**: Dark theme with vibrant neon colors, particle effects, and pseudo-3D rendering
+- **Procedural Generation**: Deterministic obstacle/coin/pickup sequences shared across all players
+- **Subway Style**: Bright daytime railway world with trains, graffiti, billboards, and pseudo-3D rendering
 - **Sound Effects**: Procedural audio via Web Audio API (no external files needed)
 - **Mobile Support**: Touch/swipe controls for mobile devices
 
@@ -33,7 +33,7 @@ A real-time multiplayer endless runner game built with Next.js, Canvas 2D, and S
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd running_game
+cd parugu
 
 # Install dependencies
 npm install
@@ -68,7 +68,7 @@ The game will be available at **http://localhost:3000**
 ## 📁 Project Structure
 
 ```
-running_game/
+parugu/
 ├── server.js                    # Custom server (Next.js + Socket.IO)
 ├── vercel.json                  # Vercel deployment config
 ├── src/
@@ -115,9 +115,8 @@ npm start
 ## 🎨 Game Design
 
 - **Pseudo-3D**: Perspective projection on Canvas 2D for a depth effect
-- **Dynamic Buildings**: Procedurally generated cityscape background
-- **Star Field**: Twinkling stars with parallax
-- **Particle System**: Dust particles, coin sparkles, and crash effects
+- **Dynamic World**: Procedurally generated city, graffiti walls, billboards, and a footbridge
+- **Particle System**: Dust, coin sparkles, crash bursts, and floating score popups
 - **Speed Lines**: Visual speed indicators at higher velocities
 - **Vignette**: Cinematic edge darkening
 

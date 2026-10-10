@@ -650,9 +650,8 @@ export default function GameView() {
           {/* Top race bar */}
           <div className="relative z-10 mb-3 flex w-full max-w-[820px] items-center justify-between rounded-xl border border-white/10 bg-black/50 px-4 py-2 backdrop-blur-md">
             <div className="flex items-center gap-2.5">
-              <span className="text-sm font-black italic tracking-tight">
-                <span className="bg-gradient-to-r from-cyan-300 to-fuchsia-400 bg-clip-text text-transparent">NEON</span>
-                <span className="text-white/90"> RUNNER</span>
+              <span className="font-playful text-base font-black italic tracking-tight">
+                <span className="bg-gradient-to-r from-amber-300 via-orange-400 to-pink-500 bg-clip-text text-transparent">PARUGU</span>
               </span>
               <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-emerald-300/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-300">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> live
