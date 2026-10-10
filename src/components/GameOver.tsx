@@ -20,7 +20,8 @@ interface GameOverProps {
 
 export default function GameOver({ rankings, currentPlayerId, onPlayAgain, onLeave, stats, isBest, best }: GameOverProps) {
   const currentPlayer = rankings.find(p => p.id === currentPlayerId);
-  const currentRank = rankings.findIndex(p => p.id === currentPlayerId) + 1;
+  const winner = rankings.length > 1 ? rankings[0] : null;
+  const iWon = !!winner && winner.id === currentPlayerId;
 
   const confetti = useMemo(() => {
     if (!isBest) return [];
@@ -69,8 +70,20 @@ export default function GameOver({ rankings, currentPlayerId, onPlayAgain, onLea
               </span>
             </h2>
             {quip && <p className="text-white/60 text-sm font-playful font-bold">{quip}</p>}
-            {currentRank === 1 && rankings.length > 1 && (
-              <p className="text-yellow-400 text-sm font-medium animate-pulse mt-1">🏆 You Won!</p>
+            {/* Winner banner — the whole point of the race */}
+            {winner && (
+              <div
+                className="mt-3 inline-flex items-center gap-2.5 rounded-2xl border-[3px] border-white px-5 py-2.5 shadow-[0_4px_0_rgba(0,0,0,0.45)] animate-countdownPop"
+                style={{ backgroundColor: winner.color + '22', boxShadow: `0 0 24px ${winner.color}55, 0 4px 0 rgba(0,0,0,0.45)` }}
+              >
+                <span className="text-2xl">{iWon ? '🏆' : '👑'}</span>
+                <span className="font-playful text-xl font-black tracking-wide" style={{ color: winner.color }}>
+                  {iWon ? 'YOU WIN!' : `${winner.name.toUpperCase()} WINS!`}
+                </span>
+                <span className="font-mono text-xs text-white/60 tabular-nums">
+                  {winner.score.toLocaleString()}
+                </span>
+              </div>
             )}
             {isBest && (
               <p className="mt-2 inline-block rounded-full border-2 border-amber-300 bg-amber-400/15 px-4 py-1 font-playful text-sm font-black text-amber-300 animate-countdownPop">

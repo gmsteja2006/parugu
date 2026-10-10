@@ -47,6 +47,7 @@ export default function GameView() {
   });
   const [isBest, setIsBest] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [spectating, setSpectating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<GameSettings>(loadSettings);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
@@ -84,6 +85,40 @@ export default function GameView() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [phase]);
+
+  // Spectate safety net: if nobody else is left alive (all dead or
+  // disconnected), end the race locally instead of hanging forever.
+  const progressRef = useRef<{ dist: number; at: number }>({ dist: -1, at: 0 });
+  useEffect(() => {
+    if (!spectating || phase !== 'playing') return;
+    progressRef.current = { dist: -1, at: Date.now() };
+    const id = setInterval(() => {
+      const r = roomRef.current;
+      if (!r || r.code === 'SOLO') return;
+      const me = playerIdRef.current;
+      const alive = r.players.filter((p) => p.id !== me && p.isAlive);
+      const finalize = () => {
+        const finalRanks = [...r.players].sort((a, b) => b.score - a.score);
+        setRankings(finalRanks);
+        setSpectating(false);
+        setPhase('gameover');
+      };
+      if (alive.length === 0) {
+        finalize();
+        return;
+      }
+      // If the leader's distance stalls for 20s, they're gone — end it
+      const leader = [...alive].sort((a, b) => b.distance - a.distance)[0];
+      const now = Date.now();
+      const prev = progressRef.current;
+      if (leader.distance !== prev.dist) {
+        progressRef.current = { dist: leader.distance, at: now };
+      } else if (now - prev.at > 20000) {
+        finalize();
+      }
+    }, 2000);
+    return () => clearInterval(id);
+  }, [spectating, phase]);
 
   const updateSettings = useCallback((patch: Partial<GameSettings>) => {
     setSettings((s) => {
@@ -166,6 +201,7 @@ export default function GameView() {
       setRoom(startRoom);
       setPhase('playing');
       setGameStarted(true);
+      setSpectating(false);
       setCurrentScore(0);
       setCurrentDistance(0);
       setCurrentCoins(0);
@@ -211,6 +247,7 @@ export default function GameView() {
     socket.on('game:over', (finalRankings: RoomPlayer[]) => {
       console.log('[Client] Game over!', finalRankings);
       setRankings(finalRankings);
+      setSpectating(false);
       setPhase('gameover');
     });
 
@@ -289,6 +326,7 @@ export default function GameView() {
         setRoom(targetRoom);
         setPhase('playing');
         setGameStarted(true);
+        setSpectating(false);
         setCurrentScore(0);
         setCurrentDistance(0);
         setCurrentCoins(0);
@@ -488,6 +526,7 @@ export default function GameView() {
     setOtherPlayers([]);
     setGameStarted(false);
     setPaused(false);
+    setSpectating(false);
     setCurrentScore(0);
     setCurrentDistance(0);
     setCurrentCoins(0);
@@ -555,10 +594,15 @@ export default function GameView() {
         const data = await res.json();
         if (data.isGameOver || room.players.length === 1) {
           setRankings(data.rankings || room.players);
+          setSpectating(false);
           setPhase('gameover');
+        } else {
+          // Others still running — watch them until the race ends
+          setSpectating(true);
         }
       } catch {
         setRankings(room.players);
+        setSpectating(false);
         setPhase('gameover');
       }
       return;
@@ -566,6 +610,8 @@ export default function GameView() {
 
     const socket = getSocket();
     socket.emit('game:died', finalScore);
+    // Watch the survivors until the server calls the race
+    setSpectating(true);
   }, [isServerlessMode, room, playerId]);
 
   // Score HUD change
@@ -589,6 +635,7 @@ export default function GameView() {
     setPhase('lobby');
     setGameStarted(false);
     setPaused(false);
+    setSpectating(false);
     setOtherPlayers([]);
     setCurrentScore(0);
     setCurrentDistance(0);
@@ -611,6 +658,9 @@ export default function GameView() {
   }, [room, handlePlaySolo]);
 
   const currentPlayer = room?.players.find(p => p.id === playerId);
+  const spectateTarget = spectating
+    ? [...(room?.players ?? [])].filter((p) => p.id !== playerId && p.isAlive).sort((a, b) => b.distance - a.distance)[0] ?? null
+    : null;
 
   return (
     <div className="min-h-screen bg-[#0a0a1a] text-white font-sans select-none">
@@ -689,6 +739,15 @@ export default function GameView() {
           </div>
 
           <div className="relative z-10">
+            {spectating && phase === 'playing' && (
+              <div className="mx-auto mb-2 flex w-fit max-w-[820px] items-center gap-2 rounded-full border-2 border-white/80 bg-black/65 px-4 py-1.5 backdrop-blur-md shadow-[0_4px_0_rgba(0,0,0,0.45)] animate-fadeIn">
+                <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="font-playful text-sm font-black tracking-wide text-white">
+                  {spectateTarget ? `👁 SPECTATING ${spectateTarget.name.toUpperCase()}` : '👁 SPECTATING THE RACE'}
+                </span>
+                <span className="text-[11px] text-white/50">you crashed — enjoy the show</span>
+              </div>
+            )}
             <Scoreboard
               currentPlayerId={playerId}
               players={room.players}
@@ -714,6 +773,7 @@ export default function GameView() {
                 onScoreChange={handleScoreChange}
                 isStarted={gameStarted}
                 paused={paused}
+                spectating={spectating}
                 quality={settings.quality}
                 shakeOn={settings.shake}
               />

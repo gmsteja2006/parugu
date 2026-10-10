@@ -22,6 +22,7 @@ interface GameCanvasProps {
   onScoreChange: (score: number, distance: number, coins: number, speed: number, magnet: number, combo: number, comboFrac: number) => void;
   isStarted: boolean;
   paused: boolean;
+  spectating: boolean;
   quality: 'high' | 'low';
   shakeOn: boolean;
 }
@@ -38,6 +39,7 @@ export default function GameCanvas({
   onScoreChange,
   isStarted,
   paused,
+  spectating,
   quality,
   shakeOn,
 }: GameCanvasProps) {
@@ -60,6 +62,13 @@ export default function GameCanvas({
       engineRef.current.state.isPaused = paused;
     }
   }, [paused]);
+
+  // Spectate mode: keep the world alive after death
+  useEffect(() => {
+    if (spectating && engineRef.current) {
+      engineRef.current.spectate();
+    }
+  }, [spectating]);
 
   useEffect(() => {
     if (rendererRef.current) {
@@ -84,7 +93,10 @@ export default function GameCanvas({
     const renderer = new GameRenderer(ctx);
 
     engine.onScoreChange = (score, distance, coins, speed, magnet, combo, comboFrac) => {
-      onScoreChange(score, distance, coins, speed, magnet, combo, comboFrac);
+      // Freeze the HUD once dead (spectators watch, scores don't move)
+      if (engine.state.player.isAlive) {
+        onScoreChange(score, distance, coins, speed, magnet, combo, comboFrac);
+      }
     };
 
     engine.onGameOver = () => {
@@ -128,7 +140,9 @@ export default function GameCanvas({
     };
   }, [playerId, playerName, playerColor, seed, difficulty]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Start the game loop when isStarted becomes true
+  // Start the game loop when isStarted becomes true.
+  // The loop runs continuously once started (rendering frozen frames when
+  // paused/dead) so replay + spectate never leave a stuck screen.
   useEffect(() => {
     if (!isStarted || !engineRef.current || !rendererRef.current) return;
 
@@ -138,16 +152,27 @@ export default function GameCanvas({
     engine.start();
 
     let lastTime = performance.now();
+    let cancelled = false;
 
     function gameLoop(currentTime: number) {
+      if (cancelled) return;
       const delta = Math.min((currentTime - lastTime) / 16.67, 2); // normalize to ~60fps
       lastTime = currentTime;
+
+      // Spectating: camera follows the race leader's lane
+      if (engine.spectating) {
+        const alive = otherPlayersRef.current.filter((p) => p.isAlive);
+        const leader = alive.sort((a, b) => b.distance - a.distance)[0];
+        if (leader) {
+          engine.state.player.lane = leader.lane;
+        }
+      }
 
       engine.update(delta);
       renderer.render(engine.state, otherPlayersRef.current);
 
-      // Send updates at ~20fps to reduce bandwidth
-      if (currentTime - lastUpdateRef.current > 50) {
+      // Send updates at ~20fps to reduce bandwidth (alive players only)
+      if (engine.state.player.isAlive && currentTime - lastUpdateRef.current > 50) {
         lastUpdateRef.current = currentTime;
         const p = engine.state.player;
         onUpdate({
@@ -161,20 +186,16 @@ export default function GameCanvas({
         });
       }
 
-      if (engine.state.isRunning) {
-        animFrameRef.current = requestAnimationFrame(gameLoop);
-      } else {
-        // One final render
-        renderer.render(engine.state, otherPlayersRef.current);
-      }
+      animFrameRef.current = requestAnimationFrame(gameLoop);
     }
 
     animFrameRef.current = requestAnimationFrame(gameLoop);
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isStarted]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isStarted, seed, playerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard controls
   useEffect(() => {

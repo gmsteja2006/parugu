@@ -194,6 +194,7 @@ export class GameEngine {
   readonly difficulty: Difficulty;
   combo: number = 0;
   comboTimer: number = 0;
+  spectating: boolean = false;
   stats: RunStats = { distance: 0, coins: 0, sprays: 0, magnets: 0, nearMisses: 0, topCombo: 0, cause: '' };
   onScoreChange?: (score: number, distance: number, coins: number, speed: number, magnet: number, combo: number, comboFrac: number) => void;
   onGameOver?: () => void;
@@ -215,6 +216,14 @@ export class GameEngine {
     this.state.isRunning = true;
     this.state.gameOver = false;
     this.state.player.isAlive = true;
+    this.spectating = false;
+  }
+
+  /** Keep the world scrolling for spectators after death */
+  spectate() {
+    this.spectating = true;
+    this.state.isRunning = true;
+    this.state.gameOver = false;
   }
 
   moveLeft() {
@@ -249,7 +258,7 @@ export class GameEngine {
   }
 
   update(deltaTime: number = 1) {
-    if (!this.state.isRunning || this.state.isPaused || this.state.gameOver || !this.state.player.isAlive) return;
+    if (!this.state.isRunning || this.state.isPaused || this.state.gameOver || (!this.state.player.isAlive && !this.spectating)) return;
 
     const player = this.state.player;
 
@@ -448,6 +457,7 @@ export class GameEngine {
 
   private checkCollisions() {
     const player = this.state.player;
+    if (this.spectating) return;
     if (player.invincibleTimer > 0) return;
 
     const playerLaneX = getLaneX(player.lane);
@@ -535,6 +545,7 @@ export class GameEngine {
   }
 
   private handleDeath(cause: string = '') {
+    if (!this.state.player.isAlive) return;
     this.state.player.isAlive = false;
     this.state.player.state = 'dead';
     this.state.gameOver = true;
