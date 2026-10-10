@@ -7,7 +7,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { GameEngine, generateObstacleSequence, generateCoinSequence, generatePickupSequence, createPlayer } from '@/game/engine';
 import { GameRenderer } from '@/game/renderer';
-import { CANVAS_WIDTH, CANVAS_HEIGHT, type RoomPlayer, type PlayerUpdateData, type Difficulty, PLAYER_COLORS } from '@/game/types';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, type RoomPlayer, type PlayerUpdateData, type Difficulty, type RunStats, PLAYER_COLORS } from '@/game/types';
 import { playJumpSound, playSlideSound, playCoinSound, playWhoosh, playLand, playSpray, playMagnet, playWhoops } from '@/game/sounds';
 
 interface GameCanvasProps {
@@ -18,10 +18,12 @@ interface GameCanvasProps {
   difficulty: Difficulty;
   otherPlayers: RoomPlayer[];
   onUpdate: (data: PlayerUpdateData) => void;
-  onDied: (finalScore: number) => void;
-  onScoreChange: (score: number, distance: number, coins: number, speed: number, magnet: number) => void;
+  onDied: (finalScore: number, stats: RunStats) => void;
+  onScoreChange: (score: number, distance: number, coins: number, speed: number, magnet: number, combo: number, comboFrac: number) => void;
   isStarted: boolean;
   paused: boolean;
+  quality: 'high' | 'low';
+  shakeOn: boolean;
 }
 
 export default function GameCanvas({
@@ -36,6 +38,8 @@ export default function GameCanvas({
   onScoreChange,
   isStarted,
   paused,
+  quality,
+  shakeOn,
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -50,12 +54,18 @@ export default function GameCanvas({
     otherPlayersRef.current = otherPlayers;
   }, [otherPlayers]);
 
-  // Pause flag → engine
+  // Pause + quality flags → engine / renderer
   useEffect(() => {
     if (engineRef.current) {
       engineRef.current.state.isPaused = paused;
     }
   }, [paused]);
+
+  useEffect(() => {
+    if (rendererRef.current) {
+      rendererRef.current.setQuality(quality, shakeOn);
+    }
+  }, [quality, shakeOn]);
 
   // Initialize engine and renderer
   useEffect(() => {
@@ -73,13 +83,13 @@ export default function GameCanvas({
     const engine = new GameEngine(player, obstacleSeq, coinSeq, difficulty, pickupSeq);
     const renderer = new GameRenderer(ctx);
 
-    engine.onScoreChange = (score, distance, coins, speed, magnet) => {
-      onScoreChange(score, distance, coins, speed, magnet);
+    engine.onScoreChange = (score, distance, coins, speed, magnet, combo, comboFrac) => {
+      onScoreChange(score, distance, coins, speed, magnet, combo, comboFrac);
     };
 
     engine.onGameOver = () => {
       playWhoops();
-      onDied(engine.state.player.score);
+      onDied(engine.state.player.score, { ...engine.stats });
     };
 
     engine.onCollectCoin = () => {
@@ -97,9 +107,12 @@ export default function GameCanvas({
       rendererRef.current?.addFloater('MAGNET!', '#ff2d78');
     };
 
-    engine.onNearMiss = () => {
+    engine.onNearMiss = (points, combo) => {
       playWhoosh();
-      rendererRef.current?.addFloater('CLOSE! +25', '#2f9e00');
+      rendererRef.current?.addFloater(`+${points}`, '#2f9e00');
+      if (combo >= 2) {
+        rendererRef.current?.addFloater(`COMBO x${combo}`, '#ff2d78');
+      }
     };
 
     engine.onLand = () => {

@@ -141,11 +141,31 @@ export interface GameState {
 }
 
 // ============================================
+// Run stats + stunt combo
+// ============================================
+
+export interface RunStats {
+  distance: number;
+  coins: number;
+  sprays: number;
+  magnets: number;
+  nearMisses: number;
+  topCombo: number;
+  cause: string;
+}
+
+export const DEATH_QUIPS: Record<string, string> = {
+  train: 'Slammed by a train!',
+  barrier: 'Clipped a barrier!',
+  cone: 'Tripped on a cone!',
+  tall_barrier: 'Bonked the gantry!',
+};
+
+// ============================================
 // Pickups (spray cans + magnets)
 // ============================================
 
 export type PickupKind = 'spray' | 'magnet';
-
 export interface Pickup {
   id: string;
   kind: PickupKind;

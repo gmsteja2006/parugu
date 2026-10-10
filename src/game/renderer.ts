@@ -128,6 +128,31 @@ function emergenceFade(z: number, speed: number): number {
   return Math.max(0, Math.min(1, (MAX_Z - z) / zone));
 }
 
+// Pre-rendered film grain tile for a subtle cinematic finish
+let grainTile: HTMLCanvasElement | null = null;
+function getGrainTile(): HTMLCanvasElement | null {
+  try {
+    if (grainTile) return grainTile;
+    grainTile = document.createElement('canvas');
+    grainTile.width = 128;
+    grainTile.height = 128;
+    const g = grainTile.getContext('2d');
+    if (!g) return null;
+    const img = g.createImageData(128, 128);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = Math.floor(Math.random() * 255);
+      img.data[i] = v;
+      img.data[i + 1] = v;
+      img.data[i + 2] = v;
+      img.data[i + 3] = 22;
+    }
+    g.putImageData(img, 0, 0);
+    return grainTile;
+  } catch {
+    return null;
+  }
+}
+
 export class GameRenderer {
   private ctx: CanvasRenderingContext2D;
   private frameCount: number = 0;
@@ -139,6 +164,9 @@ export class GameRenderer {
   private smoothX: number = VANISH_X;
   private camX: number = 0;
   private dip: number = 0;
+  private squash: number = 0;
+  private lowPower: boolean = false;
+  private shakeOn: boolean = true;
   private ghostX: Map<string, number> = new Map();
   private lastCoins: number = 0;
   private wasAlive: boolean = true;
@@ -201,10 +229,17 @@ export class GameRenderer {
     if (this.floaters.length > 12) this.floaters.shift();
   }
 
-  /** Landing thump feedback: dust burst + camera dip */
+  /** Landing thump feedback: dust burst + camera dip + squash */
   notifyLand() {
     this.dip = -5;
+    this.squash = 1;
     this.burst(this.smoothX, GROUND_Y - 4, '#c9b696', 7, 'dust');
+  }
+
+  /** Quality + shake preferences from the settings panel */
+  setQuality(quality: 'high' | 'low', shakeOn: boolean) {
+    this.lowPower = quality === 'low';
+    this.shakeOn = shakeOn;
   }
 
   render(state: GameState, otherPlayers: RoomPlayer[] = []) {
@@ -240,6 +275,7 @@ export class GameRenderer {
     const camTarget = (this.smoothX - VANISH_X) * 0.3;
     this.camX += (camTarget - this.camX) * 0.08;
     this.dip *= 0.88;
+    this.squash = Math.max(0, this.squash - 0.12);
 
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
@@ -247,8 +283,9 @@ export class GameRenderer {
     this.trauma = Math.max(0, this.trauma - 0.03);
     const shakeBase = speedNorm * 1.6;
     const shakeTrauma = this.trauma * this.trauma * 14;
-    const shX = (Math.random() - 0.5) * (shakeBase + shakeTrauma);
-    const shY = (Math.random() - 0.5) * (shakeBase * 0.7 + shakeTrauma);
+    const shakeMul = this.shakeOn ? 1 : 0;
+    const shX = (Math.random() - 0.5) * (shakeBase + shakeTrauma) * shakeMul;
+    const shY = (Math.random() - 0.5) * (shakeBase * 0.7 + shakeTrauma) * shakeMul;
 
     ctx.save();
     ctx.translate(shX - this.camX, shY + this.dip);
@@ -322,6 +359,17 @@ export class GameRenderer {
     }
     this.drawColorGrade(speedNorm);
     this.drawVignette();
+    if (!this.lowPower) {
+      const grain = getGrainTile();
+      if (grain) {
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        const ox = Math.random() * 128;
+        const oy = Math.random() * 128;
+        ctx.drawImage(grain, -ox, -oy, CANVAS_WIDTH + 128, CANVAS_HEIGHT + 128);
+        ctx.restore();
+      }
+    }
   }
 
   // ================= SKY / CITY (bright subway day) =================
@@ -379,6 +427,21 @@ export class GameRenderer {
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
+    // Horizontal lens-flare streak
+    const flare = ctx.createLinearGradient(cx - 260, 0, cx + 260, 0);
+    flare.addColorStop(0, 'rgba(255,250,220,0)');
+    flare.addColorStop(0.5, 'rgba(255,252,235,0.55)');
+    flare.addColorStop(1, 'rgba(255,250,220,0)');
+    ctx.fillStyle = flare;
+    ctx.fillRect(cx - 260, cy - 2, 520, 4);
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.arc(cx + 150, cy + 26, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,240,200,0.4)';
+    ctx.beginPath();
+    ctx.arc(cx - 190, cy - 18, 8, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   private drawClouds(distance: number, speedNorm: number) {
@@ -431,7 +494,8 @@ export class GameRenderer {
   // Soft shadows of the clouds drifting across the ground
   private drawCloudShadows() {
     const ctx = this.ctx;
-    for (let i = 0; i < Math.min(3, this.clouds.length); i++) {
+    const n = this.lowPower ? 2 : Math.min(3, this.clouds.length);
+    for (let i = 0; i < n; i++) {
       const c = this.clouds[i];
       ctx.fillStyle = 'rgba(45,75,55,0.20)';
       ctx.beginPath();
@@ -445,6 +509,12 @@ export class GameRenderer {
     const totalW = this.skyline.reduce((a, b) => a + b.w + b.gap, 0);
     let offset = (distance * 0.06) % totalW;
     const baseY = VANISH_Y + 2;
+    // Aerial-perspective haze band hugging the horizon
+    const haze = ctx.createLinearGradient(0, baseY - 70, 0, baseY + 4);
+    haze.addColorStop(0, 'rgba(230,244,252,0)');
+    haze.addColorStop(1, 'rgba(230,244,252,0.65)');
+    ctx.fillStyle = haze;
+    ctx.fillRect(0, baseY - 70, CANVAS_WIDTH, 74);
     // Hazy daytime far city
     for (let wrap = -1; wrap < 2; wrap++) {
       let x = -offset + wrap * totalW;
@@ -507,6 +577,32 @@ export class GameRenderer {
           ctx.strokeRect(wx, wy, 8, 12);
         }
       }
+      // Balcony rails on alternate buildings + AC boxes for lived-in detail
+      if (((b.x | 0) % 2 === 0) && b.height > 150) {
+        ctx.strokeStyle = 'rgba(70,60,50,0.8)';
+        ctx.lineWidth = 1.5;
+        for (let r = 1; r < rows - 1; r += 2) {
+          const ry = by + 10 + r * 23 + 13;
+          ctx.beginPath();
+          ctx.moveTo(bx - b.width / 2 + 3, ry);
+          ctx.lineTo(bx + b.width / 2 - 3, ry);
+          ctx.stroke();
+          for (let vx = 0; vx <= 4; vx++) {
+            const vxx = bx - b.width / 2 + 3 + ((b.width - 6) * vx) / 4;
+            ctx.beginPath();
+            ctx.moveTo(vxx, ry);
+            ctx.lineTo(vxx, ry - 7);
+            ctx.stroke();
+          }
+        }
+      } else if (b.height > 120) {
+        ctx.fillStyle = '#d8d4c8';
+        const ax = bx + b.width / 2 - 14;
+        const ay = by + 30 + ((b.x | 0) % 40);
+        ctx.fillRect(ax, ay, 9, 7);
+        ctx.fillStyle = '#9a968a';
+        for (let v = 0; v < 3; v++) ctx.fillRect(ax + 1.5, ay + 1.5 + v * 2, 6, 1);
+      }
       // Colored trim stripe (replaces neon sign)
       ctx.fillStyle = b.signColor;
       ctx.fillRect(bx - b.width / 2, by + b.height * 0.3, b.width, 4);
@@ -534,9 +630,9 @@ export class GameRenderer {
     ctx.closePath();
     ctx.fill();
 
-    // Scrolling gravel speckles
+    // Scrolling gravel speckles (fewer on low quality)
     const flow = (distance * 0.004) % 1;
-    const speckN = 60;
+    const speckN = this.lowPower ? 28 : 60;
     for (let i = 0; i < speckN; i++) {
       const tt = ((i / speckN) + flow) % 1;
       const t = tt * tt;
@@ -551,8 +647,8 @@ export class GameRenderer {
     }
 
     // Wooden sleepers scrolling toward the camera (main speed cue,
-    // stretched with motion blur as speed rises)
-    const tieN = 15;
+    // stretched with motion blur as speed rises, grained like cut timber)
+    const tieN = this.lowPower ? 10 : 15;
     for (let i = 0; i < tieN; i++) {
       const tt = ((i / tieN) + flow) % 1;
       const t = tt * tt;
@@ -563,6 +659,12 @@ export class GameRenderer {
       ctx.fillRect(VANISH_X - halfW, y, halfW * 2, blurH);
       ctx.fillStyle = 'rgba(255,240,220,0.18)';
       ctx.fillRect(VANISH_X - halfW, y, halfW * 2, Math.max(1, 1.5 * t));
+      // Wood grain grooves
+      if (t > 0.12) {
+        ctx.fillStyle = 'rgba(40,28,16,0.5)';
+        const grooveY = y + blurH * (0.3 + ((i * 37) % 40) / 100);
+        ctx.fillRect(VANISH_X - halfW, Math.min(grooveY, y + blurH - 1), halfW * 2, 1);
+      }
     }
 
     // Steel rails: two per lane, converging to the horizon
@@ -601,13 +703,14 @@ export class GameRenderer {
     }
   }
 
-  // Grass tufts rushing past on both verges
+  // Grass tufts rushing past on both verges (+ tiny wildflowers)
   private drawGrassTufts(distance: number) {
     const ctx = this.ctx;
     const balHalfBottom = LANE_WIDTH * 2.5;
     const flow = (distance * 0.004) % 1;
-    const n = 30;
+    const n = this.lowPower ? 14 : 30;
     ctx.lineCap = 'round';
+    const flowerCols = ['#ff8ab8', '#ffffff', '#ffe95a'];
     for (let i = 0; i < n; i++) {
       const tt = ((i / n) + flow * 1.0) % 1;
       const t = tt * tt;
@@ -625,6 +728,13 @@ export class GameRenderer {
         ctx.moveTo(x, y);
         ctx.lineTo(x + lean * hgt, y - hgt);
         ctx.stroke();
+      }
+      // Wildflower dot on every 5th tuft
+      if (i % 5 === 0 && t > 0.2) {
+        ctx.fillStyle = flowerCols[(i / 5) % 3 | 0];
+        ctx.beginPath();
+        ctx.arc(x + 2 * t, y - hgt - 1, Math.max(1, 2 * t), 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
@@ -785,7 +895,7 @@ export class GameRenderer {
   private drawProps(distance: number, speed: number) {
     const ctx = this.ctx;
     const spacing = 260;
-    const count = 8;
+    const count = this.lowPower ? 5 : 8;
     const kinds = ['crate', 'barrel', 'bush', 'sign'] as const;
     const baseIndex = Math.floor(distance / spacing);
     for (let k = 0; k < count; k++) {
@@ -1131,6 +1241,21 @@ export class GameRenderer {
     }
 
     ctx.save();
+    // Squash & stretch around the feet: stretch mid-air, squash on landing
+    let psx = 1;
+    let psy = 1;
+    if (player.state === 'jumping') {
+      const stretch = Math.min(0.22, Math.abs(player.velocityY) * 0.012);
+      psy = 1 + stretch;
+      psx = 1 - stretch * 0.55;
+    }
+    if (this.squash > 0) {
+      psy *= 1 - 0.28 * this.squash;
+      psx *= 1 + 0.34 * this.squash;
+    }
+    ctx.translate(this.smoothX, GROUND_Y);
+    ctx.scale(psx, psy);
+    ctx.translate(-this.smoothX, -GROUND_Y);
     ctx.shadowColor = player.color;
     ctx.shadowBlur = 8;
     this.drawRunner(drawX, drawY + bob, width, height, player.color, lean, player.state);
@@ -1635,11 +1760,21 @@ export class GameRenderer {
     ctx.save();
     ctx.globalAlpha = fadeIn;
 
-    // Ground shadow
+    // Soft contact shadow with blurred edge
+    ctx.save();
+    ctx.shadowColor = 'rgba(20,20,25,0.55)';
+    ctx.shadowBlur = 10 * s;
     ctx.fillStyle = 'rgba(20,20,25,0.4)';
     ctx.beginPath();
     ctx.ellipse(proj.x, proj.y + 3 * s, w * 0.55, 5 * s, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+
+    // Motion smear trailing a moving train
+    if (obstacle.moving && s > 0.35) {
+      ctx.fillStyle = 'rgba(40,40,55,0.22)';
+      this.roundRect(drawX - 3 * s, drawY + 8 * s, w + 6 * s, h, Math.max(1, 5 * s));
+    }
 
     ctx.shadowColor = 'rgba(0,0,0,0.35)';
     ctx.shadowBlur = 6 * s;
@@ -2520,7 +2655,8 @@ export class GameRenderer {
   // ================= PARTICLES =================
 
   addParticle(x: number, y: number, color: string, type: 'dust' | 'spark' | 'coin' | 'crash' | 'smoke' = 'dust') {
-    const count = type === 'coin' ? 5 : type === 'crash' ? 8 : type === 'smoke' ? 4 : 2;
+    let count = type === 'coin' ? 5 : type === 'crash' ? 8 : type === 'smoke' ? 4 : 2;
+    if (this.lowPower) count = Math.max(1, Math.floor(count / 2));
     for (let i = 0; i < count; i++) {
       const speedMul = type === 'spark' ? 2 : 1;
       this.particles.push({

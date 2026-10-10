@@ -14,6 +14,7 @@ import {
   type CoinSpawn,
   type PickupSpawn,
   type Difficulty,
+  type RunStats,
   DIFFICULTY_CONFIG,
   LANE_COUNT,
   LANE_WIDTH,
@@ -191,12 +192,15 @@ export class GameEngine {
   nextCoinIndex: number = 0;
   nextPickupIndex: number = 0;
   readonly difficulty: Difficulty;
-  onScoreChange?: (score: number, distance: number, coins: number, speed: number, magnet: number) => void;
+  combo: number = 0;
+  comboTimer: number = 0;
+  stats: RunStats = { distance: 0, coins: 0, sprays: 0, magnets: 0, nearMisses: 0, topCombo: 0, cause: '' };
+  onScoreChange?: (score: number, distance: number, coins: number, speed: number, magnet: number, combo: number, comboFrac: number) => void;
   onGameOver?: () => void;
   onCollectCoin?: () => void;
   onCollectSpray?: () => void;
   onMagnet?: () => void;
-  onNearMiss?: () => void;
+  onNearMiss?: (points: number, combo: number) => void;
   onLand?: () => void;
 
   constructor(player: PlayerData, obstacleSequence: ObstacleSpawn[], coinSequence: CoinSpawn[], difficulty: Difficulty = 'medium', pickupSequence: PickupSpawn[] = []) {
@@ -259,6 +263,12 @@ export class GameEngine {
     }
     this.state.magnet = player.magnetTimer;
 
+    // Stunt combo window ticks down
+    if (this.comboTimer > 0) {
+      this.comboTimer = Math.max(0, this.comboTimer - deltaTime / 60);
+      if (this.comboTimer === 0) this.combo = 0;
+    }
+
     // Update distance
     this.state.distance += this.state.speed * deltaTime;
     player.distance = this.state.distance;
@@ -315,7 +325,19 @@ export class GameEngine {
     this.checkCollisions();
 
     // Notify score change
-    this.onScoreChange?.(player.score, player.distance, player.coins, this.state.speed, player.magnetTimer);
+    this.onScoreChange?.(player.score, player.distance, player.coins, this.state.speed, player.magnetTimer, this.combo, this.comboTimer / 4);
+  }
+
+  /** Chained stunt dodge: combo multiplier grows while the window holds */
+  private awardDodge() {
+    const player = this.state.player;
+    this.combo = this.comboTimer > 0 ? this.combo + 1 : 1;
+    this.comboTimer = 4;
+    this.stats.topCombo = Math.max(this.stats.topCombo, this.combo);
+    this.stats.nearMisses += 1;
+    const points = 25 * this.combo;
+    player.scoreBonus += points;
+    this.onNearMiss?.(points, this.combo);
   }
 
   private spawnObstacles() {
@@ -376,8 +398,7 @@ export class GameEngine {
       if (!obstacle.passed && obstacle.z < -20) {
         obstacle.passed = true;
         if (obstacle.lane === player.lane && player.isAlive) {
-          player.scoreBonus += 25;
-          this.onNearMiss?.();
+          this.awardDodge();
         }
       }
     }
@@ -449,8 +470,7 @@ export class GameEngine {
           // If sliding under tall_barrier, skip collision
           if (obstacleDef.canSlideUnder && player.state === 'sliding') {
             obstacle.passed = true;
-            player.scoreBonus += 25;
-            this.onNearMiss?.();
+            this.awardDodge();
             continue;
           }
 
@@ -459,15 +479,14 @@ export class GameEngine {
             const playerBottom = playerTop + playerHeight;
             if (playerBottom < obstacleTop + 15) {
               obstacle.passed = true;
-              player.scoreBonus += 25;
-              this.onNearMiss?.();
+              this.awardDodge();
               continue;
             }
           }
 
           // Vertical overlap check
           if (playerTop < GROUND_Y && playerTop + playerHeight > obstacleTop) {
-            this.handleDeath();
+            this.handleDeath(obstacle.type);
             return;
           }
         }
@@ -486,10 +505,12 @@ export class GameEngine {
       if (sameLane && coin.z > -30 && coin.z < (magnetOn ? 60 : 40)) {
         coin.collected = true;
         player.coins++;
+        this.stats.coins = player.coins;
         this.onCollectCoin?.();
       } else if (magnetOn && !sameLane && Math.abs(coin.lane - player.lane) <= 1 && coin.z > -30 && coin.z < 140) {
         coin.collected = true;
         player.coins++;
+        this.stats.coins = player.coins;
         this.onCollectCoin?.();
       }
     }
@@ -501,21 +522,26 @@ export class GameEngine {
         pickup.collected = true;
         if (pickup.kind === 'spray') {
           player.scoreBonus += 50;
+          this.stats.sprays += 1;
           this.onCollectSpray?.();
         } else {
           player.magnetTimer = 8;
           this.state.magnet = 8;
+          this.stats.magnets += 1;
           this.onMagnet?.();
         }
       }
     }
   }
 
-  private handleDeath() {
+  private handleDeath(cause: string = '') {
     this.state.player.isAlive = false;
     this.state.player.state = 'dead';
     this.state.gameOver = true;
     this.state.isRunning = false;
+    this.stats.distance = Math.floor(this.state.player.distance);
+    this.stats.coins = this.state.player.coins;
+    this.stats.cause = cause;
     this.onGameOver?.();
   }
 

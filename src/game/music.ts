@@ -8,6 +8,7 @@ let musicCtx: AudioContext | null = null;
 let musicGain: GainNode | null = null;
 let step = 0;
 let nextTime = 0;
+let pendingVolume = 0.8;
 
 const STEP_DUR = 0.15; // 16th notes @100bpm
 const LOOP_STEPS = 32;
@@ -24,7 +25,7 @@ function ensureCtx(): AudioContext | null {
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       musicCtx = new AC();
       musicGain = musicCtx.createGain();
-      musicGain.gain.value = 0.32;
+      musicGain.gain.value = 0.32 * pendingVolume;
       musicGain.connect(musicCtx.destination);
     }
     if (musicCtx.state === 'suspended') {
@@ -148,4 +149,11 @@ export function stopMusic() {
 
 export function isMusicPlaying(): boolean {
   return musicTimer !== null;
+}
+
+export function setMusicVolume(v: number) {
+  pendingVolume = Math.max(0, Math.min(1, v));
+  if (musicGain && musicCtx) {
+    musicGain.gain.setTargetAtTime(0.32 * pendingVolume, musicCtx.currentTime, 0.05);
+  }
 }

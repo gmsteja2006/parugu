@@ -8,15 +8,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { generateObstacleSequence, generateCoinSequence, generatePickupSequence } from '@/game/engine';
-import { type Room, type RoomPlayer, type PlayerUpdateData, type Difficulty, DIFFICULTY_CONFIG, PLAYER_COLORS } from '@/game/types';
+import { type Room, type RoomPlayer, type PlayerUpdateData, type Difficulty, type RunStats, DIFFICULTY_CONFIG, PLAYER_COLORS } from '@/game/types';
 import StartScreen from './StartScreen';
 import Lobby from './Lobby';
 import GameCanvas from './GameCanvas';
 import Scoreboard from './Scoreboard';
 import GameOver from './GameOver';
 import CountdownOverlay from './CountdownOverlay';
+import SettingsModal, { type GameSettings, DEFAULT_SETTINGS, loadSettings } from './SettingsModal';
 import { playCountdownBeep } from '@/game/sounds';
-import { startMusic, stopMusic } from '@/game/music';
+import { startMusic, stopMusic, setMusicVolume } from '@/game/music';
 
 type GamePhase = 'start' | 'lobby' | 'countdown' | 'playing' | 'gameover';
 
@@ -34,14 +35,20 @@ export default function GameView() {
   const [currentCoins, setCurrentCoins] = useState(0);
   const [currentSpeed, setCurrentSpeed] = useState(5);
   const [currentMagnet, setCurrentMagnet] = useState(0);
-  const [paused, setPaused] = useState(false);
-  const [muted, setMuted] = useState<boolean>(() => {
+  const [combo, setCombo] = useState(0);
+  const [comboFrac, setComboFrac] = useState(0);
+  const [lastStats, setLastStats] = useState<RunStats | null>(null);
+  const [best, setBest] = useState<number>(() => {
     try {
-      return localStorage.getItem('nr_muted') === '1';
+      return Number(localStorage.getItem('nr_best') || 0);
     } catch {
-      return false;
+      return 0;
     }
   });
+  const [isBest, setIsBest] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState<GameSettings>(loadSettings);
   const [difficulty, setDifficulty] = useState<Difficulty>('medium');
   const [gameStarted, setGameStarted] = useState(false);
   const [isServerlessMode, setIsServerlessMode] = useState(false);
@@ -56,12 +63,13 @@ export default function GameView() {
 
   // Music: on during countdown + playing, off everywhere else / muted
   useEffect(() => {
-    if (!muted && (phase === 'countdown' || phase === 'playing')) {
+    setMusicVolume(settings.muted ? 0 : settings.volume);
+    if (!settings.muted && (phase === 'countdown' || phase === 'playing')) {
       startMusic();
     } else {
       stopMusic();
     }
-  }, [muted, phase]);
+  }, [settings.muted, settings.volume, phase]);
 
   useEffect(() => () => stopMusic(), []);
 
@@ -77,11 +85,11 @@ export default function GameView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [phase]);
 
-  const toggleMute = useCallback(() => {
-    setMuted((m) => {
-      const next = !m;
+  const updateSettings = useCallback((patch: Partial<GameSettings>) => {
+    setSettings((s) => {
+      const next = { ...s, ...patch };
       try {
-        localStorage.setItem('nr_muted', next ? '1' : '0');
+        localStorage.setItem('nr_settings', JSON.stringify(next));
       } catch {
         // ignore
       }
@@ -331,6 +339,11 @@ export default function GameView() {
     setPlayerId(pid);
     setIsServerlessMode(false);
     setCurrentSpeed(DIFFICULTY_CONFIG[difficulty].baseSpeed);
+    setCurrentMagnet(0);
+    setCombo(0);
+    setComboFrac(0);
+    setLastStats(null);
+    setIsBest(false);
     startCountdownFlow(soloRoom);
   }, [startCountdownFlow, difficulty]);
 
@@ -480,6 +493,10 @@ export default function GameView() {
     setCurrentCoins(0);
     setCurrentSpeed(5);
     setCurrentMagnet(0);
+    setCombo(0);
+    setComboFrac(0);
+    setLastStats(null);
+    setIsBest(false);
   }, [isServerlessMode, room, playerId]);
 
   // In-Game Update
@@ -503,7 +520,23 @@ export default function GameView() {
   }, [isServerlessMode, room, playerId]);
 
   // Player Died
-  const handleGameDied = useCallback(async (finalScore: number) => {
+  const handleGameDied = useCallback(async (finalScore: number, stats?: RunStats) => {
+    if (stats) {
+      setLastStats(stats);
+      setBest((prev) => {
+        if (finalScore > prev) {
+          try {
+            localStorage.setItem('nr_best', String(finalScore));
+          } catch {
+            // ignore
+          }
+          setIsBest(true);
+          return finalScore;
+        }
+        setIsBest(false);
+        return prev;
+      });
+    }
     if (room?.code === 'SOLO') {
       const currentPlayer = room.players[0];
       const finishedPlayer = { ...currentPlayer, score: finalScore, isAlive: false };
@@ -536,12 +569,14 @@ export default function GameView() {
   }, [isServerlessMode, room, playerId]);
 
   // Score HUD change
-  const handleScoreChange = useCallback((score: number, distance: number, coins: number, speed: number, magnet: number) => {
+  const handleScoreChange = useCallback((score: number, distance: number, coins: number, speed: number, magnet: number, comboVal: number, comboFracVal: number) => {
     setCurrentScore(score);
     setCurrentDistance(distance);
     setCurrentCoins(coins);
     setCurrentSpeed(speed);
     setCurrentMagnet(magnet);
+    setCombo(comboVal);
+    setComboFrac(comboFracVal);
   }, []);
 
   // Play Again
@@ -560,6 +595,10 @@ export default function GameView() {
     setCurrentCoins(0);
     setCurrentSpeed(5);
     setCurrentMagnet(0);
+    setCombo(0);
+    setComboFrac(0);
+    setLastStats(null);
+    setIsBest(false);
 
     setRoom(prev => {
       if (!prev) return prev;
@@ -584,6 +623,7 @@ export default function GameView() {
           error={error}
           difficulty={difficulty}
           onDifficultyChange={setDifficulty}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       )}
 
@@ -630,11 +670,18 @@ export default function GameView() {
                 </button>
               )}
               <button
-                onClick={toggleMute}
-                title={muted ? 'Unmute music' : 'Mute music'}
+                onClick={() => updateSettings({ muted: !settings.muted })}
+                title={settings.muted ? 'Unmute music' : 'Mute music'}
                 className="btn-chunky-sm"
               >
-                {muted ? '🔇' : '🎵'}
+                {settings.muted ? '🔇' : '🎵'}
+              </button>
+              <button
+                onClick={() => setSettingsOpen(true)}
+                title="Settings"
+                className="btn-chunky-sm"
+              >
+                ⚙️
               </button>
               <button onClick={handleLeave} className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-white/50 hover:text-red-300 hover:border-red-400/30 transition text-[11px] font-sans font-semibold">
                 ✕ quit
@@ -651,9 +698,11 @@ export default function GameView() {
               currentCoins={currentCoins}
               currentSpeed={currentSpeed}
               magnet={currentMagnet}
+              combo={combo}
+              comboFrac={comboFrac}
               difficulty={room.difficulty ?? difficulty}
             />
-            <div className="pt-[92px]">
+            <div className="pt-[104px]">
               <GameCanvas
                 playerId={playerId}
                 playerName={currentPlayer.name}
@@ -666,6 +715,8 @@ export default function GameView() {
                 onScoreChange={handleScoreChange}
                 isStarted={gameStarted}
                 paused={paused}
+                quality={settings.quality}
+                shakeOn={settings.shake}
               />
             </div>
           </div>
@@ -705,8 +756,18 @@ export default function GameView() {
           currentPlayerId={playerId}
           onPlayAgain={handlePlayAgain}
           onLeave={handleLeave}
+          stats={lastStats}
+          isBest={isBest}
+          best={best}
         />
       )}
+
+      <SettingsModal
+        open={settingsOpen}
+        settings={settings}
+        onChange={updateSettings}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   );
 }

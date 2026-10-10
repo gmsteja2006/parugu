@@ -16,6 +16,8 @@ interface ScoreboardProps {
   currentCoins: number;
   currentSpeed?: number;
   magnet?: number;
+  combo?: number;
+  comboFrac?: number;
   difficulty?: Difficulty;
 }
 
@@ -27,6 +29,8 @@ export default function Scoreboard({
   currentCoins,
   currentSpeed = BASE_SPEED,
   magnet = 0,
+  combo = 0,
+  comboFrac = 0,
   difficulty = 'medium',
 }: ScoreboardProps) {
   const sortedPlayers = [...players].sort((a, b) => {
@@ -39,6 +43,12 @@ export default function Scoreboard({
   const kmh = Math.round(68 + speedNorm * 132 + (currentDistance % 7));
   const nitro = speedNorm > 0.65;
   const diffCfg = DIFFICULTY_CONFIG[parseDifficulty(difficulty)];
+  // Speedometer dial geometry
+  const DIAL_R = 30;
+  const DIAL_LEN = Math.PI * DIAL_R;
+  const needleAng = Math.PI * (1 - speedNorm);
+  const needleX = 40 + (DIAL_R - 7) * Math.cos(needleAng);
+  const needleY = 40 - (DIAL_R - 7) * Math.sin(needleAng);
 
   return (
     <div className="absolute top-0 left-0 right-0 p-3 pointer-events-none z-20">
@@ -46,18 +56,26 @@ export default function Scoreboard({
         {/* Left: speed + score cluster */}
         <div className="flex flex-col gap-2 pointer-events-auto">
           <div className="flex items-stretch gap-2">
-            {/* Speed module */}
-            <div className={`relative overflow-hidden rounded-xl border px-3.5 py-2 backdrop-blur-md shadow-lg min-w-[108px] ${nitro ? 'border-orange-400/50 bg-orange-950/50' : 'border-cyan-300/25 bg-black/60'}`}>
-              <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/10">
-                <div
-                  className={`h-full transition-all duration-300 ${nitro ? 'bg-gradient-to-r from-amber-300 via-orange-500 to-red-500' : 'bg-gradient-to-r from-cyan-300 via-sky-400 to-fuchsia-400'}`}
-                  style={{ width: `${Math.round(speedNorm * 100)}%` }}
-                />
-              </div>
-              <p className={`text-[9px] uppercase tracking-[0.22em] font-bold ${nitro ? 'text-orange-300' : 'text-cyan-200/80'}`}>
+            {/* Speedometer dial module */}
+            <div className={`relative overflow-hidden rounded-2xl border-[3px] px-3 pt-1.5 pb-2 backdrop-blur-md shadow-lg w-[118px] ${nitro ? 'border-orange-300 bg-orange-950/60' : 'border-white/90 bg-black/60'}`}>
+              <p className={`text-[9px] uppercase tracking-[0.22em] font-black ${nitro ? 'text-orange-300' : 'text-cyan-200/80'}`}>
                 {nitro ? '⚡ nitro' : 'speed'}
               </p>
-              <p className="text-[26px] leading-none font-black text-white tabular-nums tracking-tight">
+              <svg viewBox="0 0 80 48" className="w-full -mb-1">
+                <path d="M10,40 A30,30 0 0 1 70,40" stroke="rgba(255,255,255,0.15)" strokeWidth="7" fill="none" strokeLinecap="round" />
+                <path
+                  d="M10,40 A30,30 0 0 1 70,40"
+                  stroke={nitro ? '#fb923c' : '#22d3ee'}
+                  strokeWidth="7"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={`${(DIAL_LEN * speedNorm).toFixed(1)} ${DIAL_LEN.toFixed(1)}`}
+                  style={{ filter: `drop-shadow(0 0 4px ${nitro ? '#fb923c' : '#22d3ee'})`, transition: 'stroke-dasharray 0.2s' }}
+                />
+                <line x1="40" y1="40" x2={needleX.toFixed(1)} y2={needleY.toFixed(1)} stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
+                <circle cx="40" cy="40" r="3.5" fill="#fff" />
+              </svg>
+              <p className="font-playful text-[22px] leading-none font-black text-white tabular-nums text-center -mt-1">
                 {kmh}
                 <span className="ml-1 text-[10px] font-bold text-white/50">km/h</span>
               </p>
@@ -69,6 +87,17 @@ export default function Scoreboard({
                 {currentScore.toLocaleString()}
               </p>
             </div>
+            {/* Combo badge */}
+            {combo >= 2 && (
+              <div key={combo} className="relative overflow-hidden rounded-xl border-[3px] border-fuchsia-300 bg-fuchsia-950/60 backdrop-blur-md px-3 py-1.5 shadow-[0_0_16px_rgba(255,45,120,0.5)] animate-countdownPop">
+                <p className="font-playful text-[18px] leading-none font-black text-white">
+                  🔥 x{combo}
+                </p>
+                <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/15">
+                  <div className="h-full bg-gradient-to-r from-fuchsia-400 to-amber-300" style={{ width: `${Math.round(comboFrac * 100)}%` }} />
+                </div>
+              </div>
+            )}
             {/* Magnet power-up slot */}
             {magnet > 0 && (
               <div className="relative overflow-hidden rounded-2xl border-[3px] border-pink-400 bg-pink-950/60 backdrop-blur-md px-3 py-2 shadow-[0_0_18px_rgba(255,45,120,0.55)] min-w-[86px] animate-pulse-glow">

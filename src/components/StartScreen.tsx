@@ -15,9 +15,10 @@ interface StartScreenProps {
   error: string | null;
   difficulty: Difficulty;
   onDifficultyChange: (d: Difficulty) => void;
+  onOpenSettings: () => void;
 }
 
-export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isConnecting, error, difficulty, onDifficultyChange }: StartScreenProps) {
+export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isConnecting, error, difficulty, onDifficultyChange, onOpenSettings }: StartScreenProps) {
   const [playerName, setPlayerName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
@@ -34,6 +35,9 @@ export default function StartScreen({ onCreateRoom, onJoinRoom, onPlaySolo, isCo
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen p-6 relative overflow-hidden">
+      <button onClick={onOpenSettings} title="Settings" className="btn-chunky-sm absolute top-4 right-4 z-20">
+        ⚙️
+      </button>
       {/* Animated background particles */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {Array.from({ length: 20 }).map((_, i) => {
