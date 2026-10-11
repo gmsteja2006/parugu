@@ -197,6 +197,11 @@ input:focus-visible {
   font-family: 'Baloo 2', 'Inter', system-ui, sans-serif;
 }
 
+/* Graffiti display face for tags, popups and banners */
+.font-graffiti {
+  font-family: 'Rubik Spray Paint', 'Baloo 2', system-ui, sans-serif;
+}
+
 /* Chunky cartoon buttons: bold outline, 3D bottom, bounce on press */
 .btn-chunky,
 .btn-chunky-green,

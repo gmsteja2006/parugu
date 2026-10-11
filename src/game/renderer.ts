@@ -167,6 +167,8 @@ export class GameRenderer {
   private squash: number = 0;
   private lowPower: boolean = false;
   private shakeOn: boolean = true;
+  private launchT: number = 1;
+  private deathT: number = 1;
   private ghostX: Map<string, number> = new Map();
   private lastCoins: number = 0;
   private wasAlive: boolean = true;
@@ -262,10 +264,18 @@ export class GameRenderer {
       this.trauma = 1;
       this.flash = 0.55;
       this.flashColor = '255,60,60';
+      this.deathT = 0;
       this.burst(this.smoothX, GROUND_Y - 40, '#ff5a3c', 26, 'crash');
       this.burst(this.smoothX, GROUND_Y - 20, '#888888', 12, 'smoke');
     }
+    if (!this.wasAlive && state.player.isAlive) {
+      // Fresh launch: springy start-in transition
+      this.launchT = 0;
+      this.burst(this.smoothX, GROUND_Y - 4, '#c9b696', 10, 'dust');
+    }
     this.wasAlive = state.player.isAlive;
+    if (state.player.isAlive) this.launchT = Math.min(1, this.launchT + 1 / 28);
+    else this.deathT = Math.min(1, this.deathT + 1 / 34);
 
     // Smooth-follow main player lane (fast, snappy, slight lag = speed feel)
     const targetX = getLaneX(state.player.lane);
@@ -301,6 +311,7 @@ export class GameRenderer {
     this.drawClouds(state.distance, speedNorm);
     this.drawBirds(speedNorm);
     this.drawSkyline(state.distance);
+    this.drawTrees(state.distance);
     this.drawSideBuildings(state.distance, speedNorm);
     this.drawTracks(state.distance, state.speed, speedNorm);
     this.drawCloudShadows();
@@ -337,9 +348,9 @@ export class GameRenderer {
       if (other.isAlive) this.drawGhostPlayer(other);
     }
 
-    // Main player
-    if (state.player.isAlive) {
-      this.drawPlayer(state.player, speedNorm);
+    // Main player (tumbles through a death animation first)
+    if (state.player.isAlive || this.deathT < 1) {
+      this.drawPlayer(state.player, speedNorm, state.isPaused);
     } else {
       this.drawWreck(speedNorm);
     }
@@ -532,6 +543,37 @@ export class GameRenderer {
           }
         }
         x += b.w + b.gap;
+      }
+    }
+  }
+
+  // Mid-ground trees scrolling between skyline and buildings (parallax)
+  private drawTrees(distance: number) {
+    const ctx = this.ctx;
+    const spacing = 190;
+    const count = 10;
+    const baseY = VANISH_Y + 26;
+    const offset = (distance * 0.25) % (spacing * 2);
+    for (let k = -1; k < count; k++) {
+      const x = k * spacing - offset + ((k * 137) % 90);
+      if (x < -60 || x > CANVAS_WIDTH + 60) continue;
+      const hgt = 34 + ((k * 61) % 30);
+      const sway = Math.sin(this.frameCount * 0.03 + k * 1.7) * 2;
+      // Trunk
+      ctx.fillStyle = '#6b4a2e';
+      ctx.fillRect(x - 2.5, baseY - hgt * 0.45, 5, hgt * 0.45);
+      // Canopy: layered sunny blobs
+      const blobs: Array<[number, number, number, string]> = [
+        [0, -hgt * 0.62, hgt * 0.3, '#2f7030'],
+        [-hgt * 0.2, -hgt * 0.5, hgt * 0.22, '#3f9040'],
+        [hgt * 0.2, -hgt * 0.52, hgt * 0.2, '#357a36'],
+        [sway * 0.4, -hgt * 0.78, hgt * 0.18, '#55a854'],
+      ];
+      for (const [ox, oy, r, col] of blobs) {
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(x + ox + sway * 0.3, baseY + oy, r, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
@@ -1053,7 +1095,7 @@ export class GameRenderer {
           ctx.rotate(side * 0.04 - 0.03);
           ctx.globalAlpha = 0.92;
           ctx.fillStyle = tagCols[Math.abs(k + (side + 1) * 2) % tagCols.length];
-          ctx.font = `italic 900 ${Math.max(7, 26 * s)}px Inter, sans-serif`;
+          ctx.font = `${Math.max(7, 26 * s)}px "Rubik Spray Paint", "Baloo 2", sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.lineWidth = Math.max(1, 3 * s);
@@ -1120,7 +1162,7 @@ export class GameRenderer {
       ctx.fillRect(bx + 3 * s, by + 2 * s, bw - 6 * s, Math.max(1, 4 * s));
       if (s > 0.3) {
         ctx.fillStyle = ad.fg;
-        ctx.font = `italic 900 ${Math.max(7, 17 * s)}px Inter, sans-serif`;
+        ctx.font = `${Math.max(7, 17 * s)}px "Rubik Spray Paint", "Baloo 2", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(ad.text, proj.x, by + bh / 2 + 1);
@@ -1187,7 +1229,7 @@ export class GameRenderer {
       ctx.fillRect(banX, banY + banH - Math.max(1, 3 * s), banW, Math.max(1, 3 * s));
       if (s > 0.3) {
         ctx.fillStyle = '#fff';
-        ctx.font = `italic 900 ${Math.max(6, 11 * s)}px Inter, sans-serif`;
+        ctx.font = `${Math.max(6, 11 * s)}px "Rubik Spray Paint", "Baloo 2", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(banners[Math.abs(k) % banners.length], VANISH_X, banY + banH / 2 + 0.5);
@@ -1198,19 +1240,42 @@ export class GameRenderer {
 
   // ================= PLAYERS =================
 
-  private drawPlayer(player: PlayerData, speedNorm: number) {
+  private drawPlayer(player: PlayerData, speedNorm: number, idle: boolean = false) {
     const ctx = this.ctx;
-    const isSliding = player.state === 'sliding';
+    const dead = !player.isAlive;
+
+    // Death tumble: flung in an arc, spinning, then gone
+    if (dead && this.deathT < 1) {
+      const t = this.deathT;
+      const popH = Math.sin(Math.min(1, t) * Math.PI) * 70;
+      const spin = t * 2.6;
+      ctx.save();
+      ctx.globalAlpha = 1 - t * t * 0.4;
+      ctx.translate(this.smoothX, GROUND_Y - PLAYER_HEIGHT / 2 - popH);
+      ctx.rotate(spin);
+      ctx.shadowColor = player.color;
+      ctx.shadowBlur = 8;
+      this.drawRunner(-PLAYER_WIDTH / 2, -PLAYER_HEIGHT / 2, PLAYER_WIDTH, PLAYER_HEIGHT, player.color, 0, 'jumping', speedNorm);
+      ctx.restore();
+      return;
+    }
+
+    const effState = idle ? 'idle' : player.state;
+    const isSliding = effState === 'sliding';
     const lean = Math.max(-0.35, Math.min(0.35, (getLaneX(player.lane) - this.smoothX) * 0.02));
     const height = isSliding ? PLAYER_SLIDE_HEIGHT : PLAYER_HEIGHT;
     const width = PLAYER_WIDTH;
     const drawX = this.smoothX - width / 2;
     const drawY = isSliding ? GROUND_Y - PLAYER_SLIDE_HEIGHT : player.y;
-    const bob = player.state === 'running' ? Math.sin(this.frameCount * 0.45) * 2 : 0;
+    // Launch spring: pop in from a crouch with forward lean
+    const launchEase = 1 - Math.pow(1 - Math.min(1, this.launchT), 3);
+    const launchScale = 0.72 + 0.28 * launchEase;
+    const launchLean = (1 - launchEase) * 0.55;
+    const bob = effState === 'running' ? Math.sin(this.frameCount * (0.45 + speedNorm * 0.3)) * (2 + speedNorm * 2) : 0;
 
     // Shadow (shrinks when jumping) — crisp daylight shadow
     const airH = Math.max(0, GROUND_Y - PLAYER_HEIGHT - player.y);
-    const shScale = Math.max(0.4, 1 - airH / 260);
+    const shScale = Math.max(0.4, 1 - airH / 260) * (0.6 + 0.4 * launchScale);
     ctx.fillStyle = `rgba(20,20,25,${(0.55 * shScale).toFixed(2)})`;
     ctx.beginPath();
     ctx.ellipse(this.smoothX, GROUND_Y + 6, width * 0.62 * shScale, 7 * shScale, 0, 0, Math.PI * 2);
@@ -1232,7 +1297,7 @@ export class GameRenderer {
     }
 
     // Speed afterimage trail
-    if (speedNorm > 0.15 && player.state === 'running') {
+    if (speedNorm > 0.15 && effState === 'running') {
       ctx.save();
       ctx.globalAlpha = 0.14 + speedNorm * 0.12;
       ctx.fillStyle = player.color;
@@ -1242,9 +1307,9 @@ export class GameRenderer {
 
     ctx.save();
     // Squash & stretch around the feet: stretch mid-air, squash on landing
-    let psx = 1;
-    let psy = 1;
-    if (player.state === 'jumping') {
+    let psx = launchScale;
+    let psy = launchScale;
+    if (effState === 'jumping') {
       const stretch = Math.min(0.22, Math.abs(player.velocityY) * 0.012);
       psy = 1 + stretch;
       psx = 1 - stretch * 0.55;
@@ -1258,18 +1323,18 @@ export class GameRenderer {
     ctx.translate(-this.smoothX, -GROUND_Y);
     ctx.shadowColor = player.color;
     ctx.shadowBlur = 8;
-    this.drawRunner(drawX, drawY + bob, width, height, player.color, lean, player.state);
+    this.drawRunner(drawX, drawY + bob, width, height, player.color, lean + launchLean, effState, speedNorm);
     ctx.restore();
 
     // Run dust / slide sparks
-    if (player.state === 'running' && this.frameCount % 2 === 0) {
+    if (effState === 'running' && this.frameCount % 2 === 0) {
       this.addParticle(this.smoothX + (Math.random() - 0.5) * 18, GROUND_Y - 2, 'rgba(195,180,150,0.85)', 'dust');
     }
     if (isSliding && this.frameCount % 2 === 0) {
       this.addParticle(this.smoothX + 12, GROUND_Y - 4, '#ffd34d', 'spark');
       this.addParticle(this.smoothX - 10, GROUND_Y - 2, player.color, 'spark');
     }
-    if (player.state === 'jumping') {
+    if (effState === 'jumping') {
       ctx.fillStyle = 'rgba(255,255,255,0.25)';
       ctx.beginPath();
       ctx.ellipse(this.smoothX, GROUND_Y - 2, 20, 4, 0, 0, Math.PI * 2);
@@ -1277,17 +1342,20 @@ export class GameRenderer {
     }
   }
 
-  /** Neon street-runner character — outlined, denim + hoodie + cap */
-  private drawRunner(x: number, y: number, w: number, h: number, color: string, lean: number, state: string) {
+  /** Subway street-runner — exaggerated cartoon run cycle */
+  private drawRunner(x: number, y: number, w: number, h: number, color: string, lean: number, state: string, speedN: number = 0.35) {
     const ctx = this.ctx;
     const cx = x + w / 2;
-    const phase = this.frameCount * 0.38;
+    // Cadence rises with speed: legs pump faster the faster you run
+    const phase = this.frameCount * (0.34 + speedN * 0.3);
     const runA = Math.sin(phase);
     const runB = Math.sin(phase + Math.PI);
+    // Torso rock + bounce with each stride
+    const rock = state === 'running' ? runA * 0.07 : 0;
 
     ctx.save();
     ctx.translate(cx, y + h);
-    ctx.rotate(lean * 0.9 + (state === 'jumping' ? -0.1 : 0));
+    ctx.rotate(lean * 0.9 + rock + (state === 'jumping' ? -0.1 : 0));
     ctx.translate(-cx, -(y + h));
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -1299,6 +1367,9 @@ export class GameRenderer {
     const skinShade = '#cf9368';
     const denim = '#33415e';
     const denimDark = '#222b42';
+    // Secondary-motion lag: straps, strings and bedroll trail the body
+    const lagX = Math.sin(phase - 0.9) * 2.2;
+    const lagY = Math.cos(phase - 0.9) * 1.6;
 
     if (state === 'sliding') {
       // Baseball slide: front leg stretched low, body reclined, head up
@@ -1387,18 +1458,90 @@ export class GameRenderer {
       return;
     }
 
+    if (state === 'idle') {
+      // Paused breather: feet planted, chest rising, arms swaying, blinking
+      const breathe = Math.sin(this.frameCount * 0.09) * 1.4;
+      const sway = Math.sin(this.frameCount * 0.06) * 1.2;
+      const hipX = cx;
+      const hipY = y + h - 24;
+      // Legs together, soft knees
+      for (const [ox, c1] of [[-4, denimDark], [4, denim]] as const) {
+        ctx.strokeStyle = outline;
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(hipX + ox * 0.5, hipY);
+        ctx.lineTo(hipX + ox, y + h - 2);
+        ctx.stroke();
+        ctx.strokeStyle = c1;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(hipX + ox * 0.5, hipY);
+        ctx.lineTo(hipX + ox, y + h - 2);
+        ctx.stroke();
+        ctx.fillStyle = '#f4f4fa';
+        this.roundRect(hipX + ox - 6, y + h - 5, 13, 5, 2.5);
+      }
+      // Torso with breathing lift
+      const shX = cx + 1;
+      const shY = y + 20 + breathe * 0.5;
+      const torsoGrad = ctx.createLinearGradient(shX - 13, 0, shX + 13, 0);
+      torsoGrad.addColorStop(0, dark);
+      torsoGrad.addColorStop(0.5, color);
+      torsoGrad.addColorStop(1, dark);
+      ctx.fillStyle = outline;
+      ctx.beginPath();
+      ctx.moveTo(shX - 13.5, shY - 2);
+      ctx.lineTo(shX + 13.5, shY - 2);
+      ctx.lineTo(shX + 10.5, hipY + 2);
+      ctx.lineTo(shX - 10.5, hipY + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = torsoGrad;
+      ctx.beginPath();
+      ctx.moveTo(shX - 12, shY - 2);
+      ctx.lineTo(shX + 12, shY - 2);
+      ctx.lineTo(shX + 9, hipY + 1);
+      ctx.lineTo(shX - 9, hipY + 1);
+      ctx.closePath();
+      ctx.fill();
+      // Relaxed arms with sway
+      for (const sd of [-1, 1] as const) {
+        const hx2 = shX + sd * 12 + sway * 0.5;
+        ctx.strokeStyle = outline;
+        ctx.lineWidth = 8;
+        ctx.beginPath();
+        ctx.moveTo(shX + sd * 10, shY + 3);
+        ctx.lineTo(hx2, shY + 20);
+        ctx.stroke();
+        ctx.strokeStyle = sd < 0 ? dark : color;
+        ctx.lineWidth = 5.5;
+        ctx.beginPath();
+        ctx.moveTo(shX + sd * 10, shY + 3);
+        ctx.lineTo(hx2, shY + 20);
+        ctx.stroke();
+        ctx.fillStyle = skin;
+        ctx.beginPath();
+        ctx.arc(hx2, shY + 22, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Head: reuse the standard head painter via a compact inline head
+      this.drawRunnerHead(shX + 1, y + 8, 0, color, dark, darker, skin, skinShade, outline);
+      ctx.restore();
+      return;
+    }
+
     const jumping = state === 'jumping';
     const hipX = cx;
     const hipY = y + h - 24;
     const shX = cx + lean * 14 + (jumping ? 0 : 2);
     const shY = y + 20;
 
-    // ---- LEGS (outline pass then color pass) ----
+    // ---- LEGS (long smooth strides, knees lifting) ----
     const legSwing = jumping ? 0.35 : 1;
-    const fKnee = { x: hipX + 5 + runA * 6 * legSwing, y: hipY + 11 };
-    const fFoot = { x: hipX + 4 + runA * 11 * legSwing, y: y + h - (jumping ? 10 : 1) };
-    const bKnee = { x: hipX - 5 + runB * 6 * legSwing, y: hipY + 11 };
-    const bFoot = { x: hipX - 4 + runB * 11 * legSwing, y: y + h - (jumping ? 15 : 1) };
+    const fKnee = { x: hipX + 6 + runA * 8 * legSwing, y: hipY + 11 - Math.abs(runA) * 4 * legSwing };
+    const fFoot = { x: hipX + 5 + runA * 15 * legSwing, y: y + h - (jumping ? 10 : 1) - Math.max(0, runA) * 5 * legSwing };
+    const bKnee = { x: hipX - 6 + runB * 8 * legSwing, y: hipY + 11 - Math.abs(runB) * 4 * legSwing };
+    const bFoot = { x: hipX - 5 + runB * 15 * legSwing, y: y + h - (jumping ? 15 : 1) - Math.max(0, runB) * 5 * legSwing };
     if (jumping) {
       // Tucked knees
       fKnee.x = hipX + 10; fKnee.y = hipY + 6;
@@ -1465,14 +1608,15 @@ export class GameRenderer {
     ctx.moveTo(packX + 6.5, packY + 11);
     ctx.lineTo(packX + 6.5, packY + 15);
     ctx.stroke();
-    // Bedroll strapped on top
+    // Bedroll strapped on top (bounces with lag)
+    const bedY = packY - 8 + lagY * 0.7;
     ctx.fillStyle = outline;
-    this.roundRect(packX - 2, packY - 8, 17, 8, 4);
+    this.roundRect(packX - 2, bedY, 17, 8, 4);
     ctx.fillStyle = '#2e9e5b';
-    this.roundRect(packX - 1, packY - 7, 15, 6, 3);
+    this.roundRect(packX - 1, bedY + 1, 15, 6, 3);
     ctx.fillStyle = '#237a44';
-    ctx.fillRect(packX + 3, packY - 7, 2.5, 6);
-    ctx.fillRect(packX + 9, packY - 7, 2.5, 6);
+    ctx.fillRect(packX + 3, bedY + 1, 2.5, 6);
+    ctx.fillRect(packX + 9, bedY + 1, 2.5, 6);
 
     // ---- TORSO: tapered hoodie ----
     const torsoTop = 24;
@@ -1512,32 +1656,32 @@ export class GameRenderer {
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = 1;
     ctx.stroke();
-    // Drawstrings
+    // Drawstrings (bounce with lag behind the torso)
     ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(shX - 4, shY + 5);
-    ctx.lineTo(shX - 4, shY + 13);
+    ctx.quadraticCurveTo(shX - 4 + lagX * 0.5, shY + 10, shX - 4 + lagX, shY + 13 + lagY * 0.5);
     ctx.moveTo(shX + 4, shY + 5);
-    ctx.lineTo(shX + 4, shY + 13);
+    ctx.quadraticCurveTo(shX + 4 + lagX * 0.5, shY + 10, shX + 4 + lagX, shY + 13 + lagY * 0.5);
     ctx.stroke();
     ctx.fillStyle = '#fff';
     ctx.beginPath();
-    ctx.arc(shX - 4, shY + 13.5, 1.4, 0, Math.PI * 2);
-    ctx.arc(shX + 4, shY + 13.5, 1.4, 0, Math.PI * 2);
+    ctx.arc(shX - 4 + lagX, shY + 13.5 + lagY * 0.5, 1.4, 0, Math.PI * 2);
+    ctx.arc(shX + 4 + lagX, shY + 13.5 + lagY * 0.5, 1.4, 0, Math.PI * 2);
     ctx.fill();
-    // Backpack straps over the shoulders
+    // Backpack straps over the shoulders (jiggle with lag)
     ctx.strokeStyle = '#7a3c06';
     ctx.lineWidth = 3.5;
     ctx.beginPath();
     ctx.moveTo(shX - 10, shY - 1);
-    ctx.lineTo(shX - 6, shY + 14);
+    ctx.quadraticCurveTo(shX - 8 + lagX * 0.4, shY + 7, shX - 6 + lagX * 0.6, shY + 14);
     ctx.stroke();
     ctx.strokeStyle = '#a5570b';
     ctx.lineWidth = 1.4;
     ctx.beginPath();
     ctx.moveTo(shX - 10, shY - 1);
-    ctx.lineTo(shX - 6, shY + 14);
+    ctx.quadraticCurveTo(shX - 8 + lagX * 0.4, shY + 7, shX - 6 + lagX * 0.6, shY + 14);
     ctx.stroke();
     // Rim light on torso edge
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
@@ -1547,11 +1691,11 @@ export class GameRenderer {
     ctx.lineTo(shX + torsoBot / 2 - 1, hipY - 1);
     ctx.stroke();
 
-    // ---- ARMS (opposite swing, bent elbows) ----
+    // ---- ARMS (wide opposite swing, bent elbows) ----
     const armSwing = jumping ? 0 : 1;
     const arms = [
-      { sx: shX - 11, ex: shX - 13 + runB * 8 * armSwing, hx2: shX - 11 + runB * 10 * armSwing, up: jumping },
-      { sx: shX + 11, ex: shX + 13 + runA * 8 * armSwing, hx2: shX + 11 + runA * 10 * armSwing, up: jumping },
+      { sx: shX - 11, ex: shX - 14 + runB * 12 * armSwing, hx2: shX - 12 + runB * 15 * armSwing, up: jumping },
+      { sx: shX + 11, ex: shX + 14 + runA * 12 * armSwing, hx2: shX + 12 + runA * 15 * armSwing, up: jumping },
     ];
     for (let i = 0; i < arms.length; i++) {
       const a = arms[i];
@@ -1600,6 +1744,14 @@ export class GameRenderer {
     // ---- HEAD: face + backward cap ----
     const hx = shX + lean * 10 + 1;
     const hy = y + 8;
+    this.drawRunnerHead(hx, hy, lean, color, dark, darker, skin, skinShade, outline);
+
+    ctx.restore();
+  }
+
+  /** Shared cartoon head: big eyes, blink, cheeks, grin, backward cap */
+  private drawRunnerHead(hx: number, hy: number, lean: number, color: string, dark: string, darker: string, skin: string, skinShade: string, outline: string) {
+    const ctx = this.ctx;
     ctx.fillStyle = outline;
     ctx.beginPath();
     ctx.arc(hx, hy, 10, 0, Math.PI * 2);
@@ -1687,8 +1839,7 @@ export class GameRenderer {
     ctx.beginPath();
     ctx.arc(hx, hy, 8, -0.7, 0.5);
     ctx.stroke();
-
-    ctx.restore();
+    // NOTE: no restore here — this helper draws inside drawRunner's save block
   }
 
   private drawGhostPlayer(player: RoomPlayer) {
@@ -1873,7 +2024,7 @@ export class GameRenderer {
         ctx.save();
         ctx.globalAlpha = 0.6 + Math.sin(this.frameCount * 0.4) * 0.4;
         ctx.fillStyle = meta.color;
-        ctx.font = '800 9px Inter, sans-serif';
+        ctx.font = '11px "Rubik Spray Paint", "Baloo 2", sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(meta.hint, mx, my - 6);
         ctx.restore();
@@ -2085,7 +2236,7 @@ export class GameRenderer {
       ctx.rotate(-0.07);
       ctx.globalAlpha = 0.9;
       ctx.fillStyle = tagCols[Math.abs(hash >> 3) % tagCols.length];
-      ctx.font = `italic 900 ${Math.max(7, 12 * s)}px Inter, sans-serif`;
+      ctx.font = `${Math.max(7, 12 * s)}px "Rubik Spray Paint", "Baloo 2", sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(tag, 0, 0);
@@ -2570,6 +2721,33 @@ export class GameRenderer {
     ctx.ellipse(cx - rx * 0.3, cy - baseR * 0.35, Math.max(0.6, rx * 0.16), Math.max(0.8, baseR * 0.22), -0.5, 0, Math.PI * 2);
     ctx.fill();
 
+    // Orbiting sparkles + light streak when edge-on
+    const twinkle = 0.6 + 0.4 * Math.sin(this.frameCount * 0.2 + coin.floatOffset * 2);
+    ctx.fillStyle = `rgba(255,255,255,${(0.85 * twinkle).toFixed(2)})`;
+    for (let i = 0; i < 2; i++) {
+      const a = this.frameCount * 0.11 + coin.floatOffset + i * Math.PI;
+      const sx = cx + Math.cos(a) * (rx + 5 * s);
+      const sy = cy + Math.sin(a) * (baseR + 5 * s);
+      const sr = Math.max(0.7, 1.8 * s);
+      ctx.beginPath();
+      ctx.moveTo(sx - sr * 2, sy);
+      ctx.lineTo(sx + sr * 2, sy);
+      ctx.moveTo(sx, sy - sr * 2);
+      ctx.lineTo(sx, sy + sr * 2);
+      ctx.lineWidth = Math.max(0.7, 1.2 * s);
+      ctx.strokeStyle = `rgba(255,255,255,${(0.8 * twinkle).toFixed(2)})`;
+      ctx.stroke();
+    }
+    if (spin < 0.35) {
+      // Edge-on flash streak
+      const streak = ctx.createLinearGradient(cx - baseR * 2.2, 0, cx + baseR * 2.2, 0);
+      streak.addColorStop(0, 'rgba(255,240,180,0)');
+      streak.addColorStop(0.5, `rgba(255,244,200,${(0.7 * (1 - spin / 0.35)).toFixed(2)})`);
+      streak.addColorStop(1, 'rgba(255,240,180,0)');
+      ctx.fillStyle = streak;
+      ctx.fillRect(cx - baseR * 2.2, cy - 1, baseR * 4.4, 2);
+    }
+
     if (s > 0.35) {
       ctx.fillStyle = '#a85f00';
       ctx.font = `800 ${Math.max(6, 11 * s)}px Inter, sans-serif`;
@@ -2702,7 +2880,7 @@ export class GameRenderer {
       if (f.life <= 0) continue;
       ctx.save();
       ctx.globalAlpha = Math.min(1, f.life * 1.6);
-      ctx.font = 'italic 900 17px Inter, sans-serif';
+      ctx.font = '19px "Rubik Spray Paint", "Baloo 2", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.lineWidth = 4;

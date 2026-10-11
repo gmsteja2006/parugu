@@ -58,6 +58,7 @@ export default function Scoreboard({
           <div className="flex items-stretch gap-2">
             {/* Speedometer dial module */}
             <div className={`relative overflow-hidden rounded-2xl border-[3px] px-3 pt-1.5 pb-2 backdrop-blur-md shadow-lg w-[118px] ${nitro ? 'border-orange-300 bg-orange-950/60' : 'border-white/90 bg-black/60'}`}>
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent" />
               <p className={`text-[9px] uppercase tracking-[0.22em] font-black ${nitro ? 'text-orange-300' : 'text-cyan-200/80'}`}>
                 {nitro ? '⚡ nitro' : 'speed'}
               </p>
@@ -81,7 +82,8 @@ export default function Scoreboard({
               </p>
             </div>
             {/* Score module — big playful counter */}
-            <div className="rounded-2xl border-[3px] border-white/90 bg-black/60 backdrop-blur-md px-3.5 py-2 shadow-[0_4px_0_rgba(0,0,0,0.45)] min-w-[118px]">
+            <div className="relative overflow-hidden rounded-2xl border-[3px] border-white/90 bg-black/60 backdrop-blur-md px-3.5 py-2 shadow-[0_4px_0_rgba(0,0,0,0.45)] min-w-[118px]">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent" />
               <p className="text-[9px] uppercase tracking-[0.22em] font-bold text-white/45">score</p>
               <p className="font-playful text-[30px] leading-none font-black text-white tabular-nums drop-shadow-[0_2px_0_rgba(0,0,0,0.5)]">
                 {currentScore.toLocaleString()}
